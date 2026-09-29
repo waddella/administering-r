@@ -1,0 +1,235 @@
+---
+format: revealjs
+---
+
+# Incremental maintenance {.dark-slide background-color="#111C26"}
+
+[BLOCK 6 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[Adding, updating, and removing packages in a site library.]{.subhead}
+
+## Set up a site library
+
+::: {.demo-label}
+Live
+:::
+
+Same container as the local repository block, so `/opt/pkgrepo` is still
+there.
+
+```bash
+mkdir -p /opt/rlibs/4.6
+
+cat >> /usr/lib/R/etc/Rprofile.site <<'EOF'
+.Library.site <- "/opt/rlibs/4.6"
+EOF
+```
+
+Two ways to set the site library
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Managing-libraries)):
+
+| | `.Library.site` in `Rprofile.site` | `R_LIBS_SITE` in `Renviron.site` |
+|---|---|---|
+| R-admin | Recommended | "Not recommended" |
+| After startup | Locked; users cannot easily change it | Overridable per job with `${R_LIBS_SITE-...}` |
+| Under `--vanilla` | Not applied (`Rprofile.site` is skipped) | Applied only if set in the job's environment |
+
+```bash
+# the environment-variable route
+R_LIBS_SITE=${R_LIBS_SITE-'/opt/rlibs/4.6'}
+```
+
+## Check `.libPaths()`
+
+```bash
+R -q --no-echo -e '.libPaths()'
+```
+
+```text
+[1] "/opt/rlibs/4.6"
+[2] "/usr/lib/R/library"
+```
+
+The Debian site libraries are gone from the path: `.Library.site` replaced
+them.
+
+## Install, then lock down
+
+```r
+install.packages(c("xml2", "R6"), lib = "/opt/rlibs/4.6",
+                 repos = "file:///opt/pkgrepo")
+```
+
+```bash
+# readable by all, writable by root only
+chown -R root:root /opt/rlibs/4.6
+chmod -R a+rX,go-w /opt/rlibs/4.6
+```
+
+::: {.note}
+[What `rocker/r-base` does instead]{.note-label}
+It runs `chown root:staff /usr/local/lib/R/site-library` and `chmod g+ws`
+(group-writable, setgid), so members of group `staff` can install into the
+site library
+([Dockerfile](https://github.com/rocker-org/rocker/blob/master/r-base/latest/Dockerfile)).
+:::
+
+## `old.packages()` before `update.packages()`
+
+Say the repository now carries `rlang` 1.1.6 and the library has 1.1.5:
+
+```r
+old.packages(lib.loc = "/opt/rlibs/4.6",
+             repos   = "file:///opt/pkgrepo")
+```
+
+```text
+      Package LibPath          Installed Built   ReposVer Repository
+rlang "rlang" "/opt/rlibs/4.6" "1.1.5"   "4.6.1" "1.1.6"  "file:///opt/pkgrepo/src/contrib"
+```
+
+`old.packages()` only reports: what is installed, what the repository
+offers, and where it would come from. It changes nothing
+([`?update.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/update.packages.html)).
+
+## `update.packages()` arguments
+
+```r
+update.packages(lib.loc = "/opt/rlibs/4.6",
+                repos   = "file:///opt/pkgrepo",
+                ask     = FALSE,
+                checkBuilt = TRUE)
+```
+
+| Argument | What it does |
+|---|---|
+| `lib.loc` | Libraries to update. The default, `NULL`, means all of `.libPaths()` |
+| `ask` | `TRUE` by default: asks for each package. `FALSE` for scripts |
+| `checkBuilt` | Also treats packages built under an earlier R minor version as old. `FALSE` by default |
+| `oldPkgs` | Only consider these packages |
+| `instlib` | Install the updates into this library instead |
+
+Source: [`?update.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/update.packages.html).
+
+## What `update.packages()` misses
+
+**Only what it can see.** It compares the libraries in `lib.loc` with what
+the repositories offer. A package the repository no longer carries is not
+reported.
+
+**Packages built under an older R.** Without `checkBuilt = TRUE`, a package
+built under R 4.5 counts as current when its version number is current.
+
+```r
+# a library carried over from R 4.5
+update.packages(lib.loc = "/opt/rlibs/4.6", checkBuilt = TRUE, ask = FALSE)
+```
+
+::: {.note}
+[Managed site libraries]{.note-label}
+Instead of updating in place, build a new repository and a new library,
+check them as a cohort, and switch the symlink.
+:::
+
+## `remove.packages()` does not check dependents
+
+```r
+remove.packages("xml2", lib = "/opt/rlibs/4.6")
+```
+
+It removes the package and updates the index. It does not check whether
+other packages depend on it
+([`?remove.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/remove.packages.html)).
+
+```r
+# check first
+tools::package_dependencies("xml2", reverse = TRUE, which = "most",
+  db = installed.packages(lib.loc = "/opt/rlibs/4.6"))
+```
+
+::: {.note}
+[Check reverse dependencies first]{.note-label}
+Packages that depend on a removed package stay installed, and fail when
+loaded.
+:::
+
+## Verify a library
+
+```r
+# every installed package, and whether its dependencies resolve
+ip <- installed.packages(lib.loc = "/opt/rlibs/4.6")
+deps <- tools::package_dependencies(rownames(ip), db = ip)
+missing <- setdiff(unlist(deps), c(rownames(ip),
+                                   rownames(installed.packages(lib.loc = .Library))))
+missing
+```
+
+```r
+# can everything load?
+for (p in rownames(ip))
+  tryCatch(loadNamespace(p),
+           error = function(e) cat("FAIL", p, conditionMessage(e), "\n"))
+```
+
+The first check reads metadata. The second loads each package, so it also
+catches missing shared libraries.
+
+## Environment variable reference
+
+| Variable | What it does |
+|---|---|
+| `R_HOME` | The installation root. Set by R |
+| `R_LIBS` | Library paths, used for the initial `.libPaths()` |
+| `R_LIBS_USER` | The user library. Only used if the directory exists |
+| `R_LIBS_SITE` | The site library. Prefer `.Library.site` in `Rprofile.site` |
+| `R_ENVIRON`, `R_ENVIRON_USER` | Which environment files are read |
+| `R_PROFILE`, `R_PROFILE_USER` | Which profile files are read |
+| `R_DEFAULT_PACKAGES` | Packages attached at startup |
+| `R_SCRIPT_DEFAULT_PACKAGES` | The same for `Rscript`; takes precedence |
+| `TMPDIR` | The session's temporary directory, and where `configure` scripts run |
+
+Sources: [`?EnvVar`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/EnvVar.html),
+[`?.libPaths`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/libPaths.html),
+[`?Rscript`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/Rscript.html).
+
+## A `noexec` `/tmp` breaks `configure`
+
+::: {.note}
+[From the R-admin manual]{.note-label}
+"`TMPDIR` will be used to execute configure scripts when installing
+packages, so if `/tmp` has been mounted as `noexec`, `TMPDIR` needs to be
+set to a directory from which execution is allowed."
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Running-R))
+:::
+
+```bash
+# in Renviron.site, on a host with a noexec /tmp
+TMPDIR=/var/tmp/R
+```
+
+The directory must exist and be writable. The same section also advises
+setting `TMPDIR` for long-running jobs on systems that clean `/tmp`
+periodically, for example with `tmpwatch`.
+
+## `pak`
+
+`pak` has a dependency solver, a system dependency solver, and parallel
+downloads and installs ([pak](https://pak.r-lib.org/)).
+
+```r
+pak::pkg_install("xml2")
+pak::pkg_deps_tree("dplyr")
+pak::pkg_status("xml2")
+pak::lockfile_create(c("xml2", "R6"), lockfile = "pkg.lock")
+pak::lockfile_install("pkg.lock")
+```
+
+`install.packages()` ships with R; `pak` has to be installed first.
+
+::: {.note}
+[Recommendation]{.note-label}
+Whichever you use for the site library, run it from a committed script.
+:::

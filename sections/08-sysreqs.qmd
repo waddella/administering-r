@@ -1,0 +1,279 @@
+---
+format: revealjs
+---
+
+# System requirements {.dark-slide background-color="#111C26"}
+
+[BLOCK 4 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[OS libraries that R packages need to build and load.]{.subhead}
+
+## `SystemRequirements`
+
+In the shell of the block 4 container, after `q()`:
+
+```bash
+R -q -e 'download.packages("xml2", destdir = ".")'
+
+tar xzf xml2_1.6.0.tar.gz
+grep -A1 SystemRequirements xml2/DESCRIPTION
+```
+
+```text
+SystemRequirements: libxml2: libxml2-dev (deb), libxml2-devel (rpm)
+Collate: 'S4.R' 'as_list.R' 'xml_parse.R' 'as_xml_document.R'
+```
+
+The same field in a few other CRAN packages:
+
+```text
+sf:        GDAL (>= 2.0.1), GEOS (>= 3.4.0), PROJ (>= 4.8.0), sqlite3
+rjags:     JAGS 4.x.y
+RPostgres: libpq >= 9.0: libpq-dev (deb) or postgresql-devel (rpm)
+V8:        On Linux you can build against libv8-dev (Debian) or v8-devel (Fedora). ...
+curl:      libcurl (>= 7.73): libcurl-devel (rpm) or libcurl4-openssl-dev (deb)
+```
+
+## The field is free text
+
+- **No required format.** Every maintainer writes it differently
+  ([r-system-requirements](https://github.com/rstudio/r-system-requirements)).
+- **Not in CRAN's `PACKAGES`.** CRAN's index has no `SystemRequirements`
+  field, so `install.packages()` never sees it. Package Manager's index
+  does include it.
+
+`install.packages()` cannot warn you, check beforehand, or install OS
+packages. It compiles, fails, and shows you the compiler output.
+
+## Installing `xml2` without `libxml2-dev`
+
+::: {.demo-label}
+Live
+:::
+
+Same container. `rocker/r-base` installs `r-base-dev`, so there is a
+compiler, but not every `-dev` package
+([Dockerfile](https://github.com/rocker-org/rocker/blob/master/r-base/latest/Dockerfile)).
+
+```bash
+R -q
+```
+
+```r
+install.packages("xml2")
+```
+
+It downloads `cli` and `rlang`, installs them, then reaches `xml2`.
+
+## The error
+
+```text
+* installing *source* package ‘xml2’ ...
+** this is package ‘xml2’ version ‘1.6.0’
+** package ‘xml2’ successfully unpacked and MD5 sums checked
+** using staged installation
+Package libxml-2.0 was not found in the pkg-config search path.
+Perhaps you should add the directory containing `libxml-2.0.pc'
+to the PKG_CONFIG_PATH environment variable
+Package 'libxml-2.0' not found
+Package libxml-2.0 was not found in the pkg-config search path.
+Perhaps you should add the directory containing `libxml-2.0.pc'
+to the PKG_CONFIG_PATH environment variable
+Package 'libxml-2.0' not found
+Using PKG_CFLAGS=
+Using PKG_LIBS=-lxml2
+------------------------- ANTICONF ERROR ---------------------------
+Configuration failed because libxml-2.0 was not found. Try installing:
+ * deb: libxml2-dev (Debian, Ubuntu, Alpine, etc)
+ * rpm: libxml2-devel (Fedora, CentOS, RHEL)
+ * csw: libxml2_dev (Solaris)
+If libxml-2.0 is already installed, check that 'pkg-config' is in your
+PATH and PKG_CONFIG_PATH contains a libxml-2.0.pc file. If pkg-config
+is unavailable you can set INCLUDE_DIR and LIB_DIR manually via:
+R CMD INSTALL --configure-vars='INCLUDE_DIR=... LIB_DIR=...'
+-------------------------- [ERROR MESSAGE] ---------------------------
+<stdin>:1:10: fatal error: libxml/tree.h: No such file or directory
+compilation terminated.
+--------------------------------------------------------------------
+ERROR: configuration failed for package ‘xml2’
+* removing ‘/usr/local/lib/R/site-library/xml2’
+
+The downloaded source packages are in
+        ‘/tmp/Rtmpg0FFvy/downloaded_packages’
+Warning message:
+In install.packages("xml2") :
+  installation of package ‘xml2’ had non-zero exit status
+```
+
+## Reading the error
+
+The `ANTICONF ERROR` block names what is missing and the Debian package to
+install:
+
+```text
+Configuration failed because libxml-2.0 was not found. Try installing:
+ * deb: libxml2-dev (Debian, Ubuntu, Alpine, etc)
+```
+
+`xml2`'s own `configure` script prints this
+([configure](https://github.com/r-lib/xml2/blob/main/configure)). Without
+such a hint, read the last lines before `ERROR:`.
+
+## Failure phase → fix {.skip}
+
+```text
+configure: ... was not found              -> missing -dev package (headers)
+foo.c:12:10: fatal error: x.h             -> missing -dev package (headers)
+ld: cannot find -lfoo                     -> missing -dev package (library)
+unable to load shared object '.../foo.so'
+  libfoo.so.1: cannot open shared object  -> missing runtime library
+```
+
+::: {.note}
+[Installs, then fails to load]{.note-label}
+The headers were there at build time; the shared library is not there at
+run time. Run `ldd <pkg>/libs/<pkg>.so` and look for `not found`.
+:::
+
+## Fixing it
+
+::: {.demo-label}
+Live
+:::
+
+After `q()`:
+
+```bash
+apt-get update && apt-get install -y libxml2-dev
+```
+
+```bash
+# confirm what we got
+dpkg -L libxml2-dev | grep 'tree\.h'
+xml2-config --cflags
+pkg-config --modversion libxml-2.0
+```
+
+```text
+/usr/include/libxml2/libxml/tree.h
+-I/usr/include/libxml2
+2.15.4
+```
+
+Retry, and it compiles:
+
+```r
+install.packages("xml2")
+library(xml2)
+read_xml("<a><b>hi</b></a>")
+```
+
+## `r-system-requirements`
+
+Posit maintains rules that map the free text to OS packages, per
+distribution
+([rstudio/r-system-requirements](https://github.com/rstudio/r-system-requirements)).
+Package Manager and `pak` use them.
+
+Each rule is a regular expression over `SystemRequirements`, and the OS
+packages to install per distribution:
+
+```json
+{
+  "patterns": ["\\blibxml2\\b"],
+  "dependencies": [{
+    "packages": ["libxml2-dev"],
+    "constraints": [{ "os": "linux", "distribution": "debian" }]
+  }]
+}
+```
+
+Supported distributions include Debian 13 and unstable, Ubuntu 22.04 to
+26.04, and RHEL 7 to 10 (see the README for the full list).
+
+## Package Manager sysreqs API
+
+An HTTP API, so it works from a Dockerfile or shell script without R.
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+curl -s "https://packagemanager.posit.co/__api__/repos/cran/sysreqs\
+?all=false&pkgname=xml2&distribution=debian&release=13"
+```
+
+```json
+{"requirements":[{"name":"xml2","requirements":{
+  "packages":["libxml2-dev"],
+  "install_scripts":["apt-get install -y libxml2-dev"]}}]}
+```
+
+
+## `pak::pkg_sysreqs()`
+
+```r
+install.packages("pak", repos = sprintf(
+  "https://r-lib.github.io/p/pak/stable/%s/%s/%s",
+  .Platform$pkgType, R.Version()$os, R.Version()$arch))
+pak::pkg_sysreqs("xml2", sysreqs_platform = "debian-13")
+```
+
+```text
+-- Install scripts -----------------------------------------
+apt-get -y update
+apt-get -y install libxml2-dev
+
+-- Packages and their system dependencies ------------------
+xml2  - libxml2-dev
+```
+
+
+## Sysreqs for a package set
+
+`pkg_sysreqs()` resolves the dependency tree first, so you get the system
+requirements of the whole set
+([`?pak::pkg_sysreqs`](https://pak.r-lib.org/reference/pkg_sysreqs.html)).
+
+```r
+pak::pkg_sysreqs(c("sf", "RPostgres", "xml2"),
+                 sysreqs_platform = "debian-13")
+```
+
+In a Dockerfile, with `pak` installed. `install_scripts` alone leaves out
+`pre_install`, which holds `apt-get update`:
+
+```dockerfile
+RUN Rscript -e 's <- pak::pkg_sysreqs("sf", sysreqs_platform = "debian-13"); \
+      writeLines(c(s$pre_install, s$install_scripts, s$post_install), \
+                 "/tmp/sysreqs.sh")' \
+ && sh -e /tmp/sysreqs.sh && rm /tmp/sysreqs.sh
+```
+
+When `pak` does the installing, it installs the OS packages itself if R
+runs as root or with password-less `sudo`
+([pak system requirements](https://pak.r-lib.org/reference/sysreqs.html)):
+
+```r
+pak::pkg_install("sf")
+```
+
+## When the mapping is wrong or absent
+
+1. **Read the field.** In the tarball's `DESCRIPTION`, or with
+   `tools::CRAN_package_db()`.
+2. **Read `configure`.** In an Anticonf script, `PKG_CONFIG_NAME`,
+   `PKG_DEB_NAME` and `PKG_TEST_HEADER` say what it looks for
+   ([xml2's configure](https://github.com/r-lib/xml2/blob/main/configure)).
+3. **Search by file.** `apt-file search libxml/tree.h` finds the package
+   that provides a header (install it first with
+   `apt-get install -y apt-file && apt-file update`); on RHEL,
+   `dnf provides '*/libxml/tree.h'`.
+
+Missing rules can be contributed to `r-system-requirements`.
+
+

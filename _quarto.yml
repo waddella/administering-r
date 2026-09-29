@@ -1,0 +1,41 @@
+project:
+  type: default
+  output-dir: _output
+  render:
+    - slides.qmd
+    # Listed so each section also renders as its own deck, with this config,
+    # for previewing. slides.qmd includes them for the full deck.
+    - sections/*.qmd
+  # Quarto does not follow the url()s inside assets/slides.css when collecting
+  # resources, so the fonts and logos would be left out. Copy the tree itself.
+  resources:
+    - assets/
+
+format:
+  revealjs:
+    theme: [default, theme/theme.scss]
+    width: 1600
+    height: 900
+    slide-number: c/t
+    show-slide-number: all
+    progress: true
+    controls: false
+    history: true
+    hash-type: number
+    center: false
+    center-title-slide: false
+    incremental: false
+    code-copy: true
+    code-overflow: scroll
+    code-line-numbers: false
+    highlight-style: a11y
+    link-external-newwindow: true
+    logo: assets/logos/posit-horiz-full-color.png
+    footer: "Administering R &middot; R in Pharma 2026"
+    title-slide-attributes:
+      data-background-color: "#111C26"
+    # @font-face and the dark-slide logo live in assets/slides.css rather than
+    # theme/theme.scss: Quarto relocates the compiled theme into *_files/libs/,
+    # which breaks relative url()s. A plain css file is linked in place, so its
+    # url()s resolve against assets/ for slides.qmd and sections/*.qmd alike.
+    css: assets/slides.css

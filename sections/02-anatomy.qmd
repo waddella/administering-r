@@ -1,0 +1,396 @@
+---
+format: revealjs
+---
+
+# What is inside an R installation {.dark-slide background-color="#111C26"}
+
+[BLOCK 1 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+## Where is R?
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+which R
+```
+
+```text
+/usr/bin/R
+``` 
+
+or better:
+
+```bash
+which -a R Rscript
+```
+
+```text
+/usr/bin/R
+/bin/R
+/usr/bin/Rscript
+/bin/Rscript
+```
+
+On a server with several R versions, the first hit is not necessarily the
+one you want. `which -a` lists all of them.
+
+## `R` is a shell script
+
+```bash
+head -6 "$(which R)"
+```
+
+```text
+#!/bin/bash
+# Shell wrapper for R executable.
+
+R_HOME_DIR="/usr/lib/R"
+if test "${R_HOME_DIR}" = "/usr/lib/R"; then
+   case "linux-gnu" in
+```
+
+The path to the installation is **hard-coded into the script at build time**.
+This is exactly why you cannot move an R installation by copying the
+directory, and why `--prefix` matters at `configure` time.
+
+R also reports the installation path itself:
+
+```shell
+R RHOME
+```
+
+```text
+/usr/lib/R
+```
+
+R-admin calls this path `R_HOME` ([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html)).
+
+## What the script does before it execs
+
+The script ends by `exec`ing another program:
+
+```bash
+grep -n 'exec' "$(which R)" | tail -5
+```
+
+```text
+144:      exec sh "${R_HOME}/bin/Rcmd" "${@}" ;;
+252:R_binary="${R_HOME}/bin/exec${R_ARCH}/R"
+273:  exec "${R_binary}"  ${args} "${@}"
+298:    exec ${debugger} ${debugger_args} "${R_binary}"
+300:    exec ${debugger} ${debugger_args} "${R_binary}" ${args} "${@}"
+```
+
+Along the way it:
+
+- sets `R_HOME`, `R_SHARE_DIR`, `R_INCLUDE_DIR`, `R_DOC_DIR`
+- sources `${R_HOME}/etc/ldpaths` to fix up `LD_LIBRARY_PATH`
+- dispatches `R CMD ...`, `R --version`, `R RHOME` without starting R at all
+- finally execs the real binary
+
+## Trying it out 
+
+The real executable is under `bin/exec/`.
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+head -c 4 /usr/lib/R/bin/exec/R | od -c | head -1
+```
+
+```text
+0000000 177   E   L   F
+```
+
+
+```bash
+/usr/lib/R/bin/exec/R --vanilla -q -e '1+1'
+```
+
+```text
+Fatal error: R home directory is not defined
+```
+
+## And fixing it
+
+```bash
+R_HOME=/usr/lib/R /usr/lib/R/bin/exec/R --vanilla -q -e 'R.version.string'
+```
+
+```text
+> R.version.string
+[1] "R version 4.6.1 (2026-06-24)"
+```
+
+::: {.note}
+[Why this matters]{.note-label}
+A service or tool that runs `bin/exec/R` directly, instead of the `R`
+script, skips both jobs of the wrapper: setting `R_HOME` and sourcing
+`etc/ldpaths` for `LD_LIBRARY_PATH`
+([R.sh.in](https://github.com/wch/r-source/blob/trunk/src/scripts/R.sh.in)).
+On this image `R_HOME` is enough.
+:::
+
+## `R_HOME` directory structure
+
+```bash
+R RHOME
+ls "$(R RHOME)"
+```
+
+```text
+bin  COPYING  etc  lib  library  modules  site-library  SVN-REVISION
+```
+
+| Directory | Contents |
+|---|---|
+| `bin/` | The `R` and `Rscript` wrappers, `exec/R`, and the `R CMD` helper scripts |
+| `etc/` | `Renviron`, `Renviron.site`, `Rprofile.site`, `Makeconf`, `ldpaths` |
+| `library/` | `.Library`: base and recommended packages |
+| `site-library/` | `.Library.site`, if it exists: where you put site packages |
+| `lib/` | `libR.so` and friends |
+| `modules/` | Loadable modules: `lapack.so`, `internet.so`, `R_X11.so` |
+
+A source build also has `share/` and `doc/` here. Debian relocates those to
+`/usr/share/R/` and `/usr/share/doc/r-base-core/`. One more reason to ask
+`R RHOME` rather than assume a layout.
+
+## On Debian, `etc/` is somewhere else
+
+```bash
+ls -l "$(R RHOME)/etc"
+```
+
+```text
+-rw-r--r-- 1 root root  234 javaconf
+lrwxrwxrwx 1 root root   14 ldpaths       -> /etc/R/ldpaths
+lrwxrwxrwx 1 root root   15 Makeconf      -> /etc/R/Makeconf
+lrwxrwxrwx 1 root root   15 Renviron      -> /etc/R/Renviron
+lrwxrwxrwx 1 root root   20 Renviron.site -> /etc/R/Renviron.site
+-rw-r--r-- 1 root root 2210 Renviron.ucf
+lrwxrwxrwx 1 root root   19 repositories  -> /etc/R/repositories
+lrwxrwxrwx 1 root root   20 Rprofile.site -> /etc/R/Rprofile.site
+```
+
+Debian and Ubuntu symlink the configuration into `/etc/R/` so that it
+survives package upgrades and belongs to the sysadmin rather than the
+package manager. A source build has real files in `$(R RHOME)/etc`.
+
+Either way, **`$(R RHOME)/etc` is R's default site-wide configuration location**. 
+
+`repositories` is Debian's own addition: the menu `chooseCRANmirror()` offers.
+`Renviron.ucf` is the packaging system's reference copy, used to detect
+whether you have edited `Renviron` (do not edit it).
+
+## `R` versus `Rscript`
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+head -1 "$(which R)"
+```
+
+```text
+#!/bin/bash
+```
+
+```bash
+head -c 4 "$(which Rscript)" | od -c | head -1
+```
+
+```text
+0000000 177   E   L   F
+```
+
+**`R` is a shell script. `Rscript` is a compiled binary.**
+
+## `Rscript` runs the `R` script
+
+```bash
+Rscript --verbose -e '1+1'
+```
+
+```text
+running
+  '/usr/lib/R/bin/R --no-echo --no-restore -e 1+1'
+
+[1] 2
+```
+
+`Rscript` is a small binary with R's install path compiled into it (an
+`RHOME` environment variable overrides it). It runs the `R` shell script from
+there
+([Rscript.c](https://github.com/wch/r-source/blob/trunk/src/unix/Rscript.c)).
+
+```text
+R        ->  bin/R (script)  ->  bin/exec/R
+Rscript  ->  bin/R (script)  ->  bin/exec/R
+```
+
+Both end up in the wrapper, so both set `R_HOME` themselves. Only running
+`bin/exec/R` directly needs `R_HOME` from outside.
+
+## The behavioural differences
+
+| | `R` | `Rscript` |
+|---|---|---|
+| Form | `#!/bin/bash` wrapper, ~300 lines | ELF binary, ~15 KB |
+| Echoes input | Yes | No (`--no-echo` implied) |
+| `--no-save` | Implied by `-e`, otherwise must be given | Implied |
+| `--no-restore` | Must be given | Implied |
+| Startup files | Read | Read, **the same ones** |
+| Default packages | `R_DEFAULT_PACKAGES` | `R_SCRIPT_DEFAULT_PACKAGES` first, else `R_DEFAULT_PACKAGES` |
+
+`-e` implies `--no-save` unless `--save` is given
+([R-intro](https://cran.r-project.org/doc/manuals/r-release/R-intro.html#Invoking-R-from-the-command-line)).
+
+```bash
+R -q -e 'cat("hi\n")'
+```
+
+```text
+> cat("hi\n")
+hi
+>
+```
+
+```bash
+Rscript -e 'cat("hi\n")'
+```
+
+```text
+hi
+```
+
+## Two things that are *not* different
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+R -q --no-echo --no-restore -e 'cat(length(search()), interactive(), "\n")'
+Rscript                   -e 'cat(length(search()), interactive(), "\n")'
+```
+
+```text
+9 FALSE
+9 FALSE
+```
+
+**Default packages are the same.** Both attach the same nine environments
+unless you set `R_SCRIPT_DEFAULT_PACKAGES`.
+
+**Neither is interactive.** `interactive()` is `FALSE` for `R -e` too. Code
+that branches on `interactive()` to decide whether to prompt will not prompt
+under either.
+
+::: {.note}
+[Attach only `base`]{.note-label}
+`R_SCRIPT_DEFAULT_PACKAGES=NULL` makes `Rscript` attach only `base`, and
+takes precedence over `R_DEFAULT_PACKAGES`
+([`?Rscript`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/Rscript.html),
+[`?Startup`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Startup.html)).
+:::
+
+## `Rscript` reads the same startup files
+
+```bash
+Rscript          -e 'getOption("repos")'
+Rscript --vanilla -e 'getOption("repos")'
+```
+
+`Rscript` reads the same startup files as `R`. `--vanilla` skips the site
+and user files: `Renviron.site`, `Rprofile.site`, `.Renviron` and
+`.Rprofile`. `$(R RHOME)/etc/Renviron` is still read
+([`?Startup`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/Startup.html)).
+
+::: {.note}
+[Rule]{.note-label}
+`--vanilla` skips `Rprofile.site`, so a job run as `Rscript --vanilla job.R`
+does not see the repository or library you configured there. Put what the
+job needs in the script (`repos =`, `lib =`) or, for settings R reads from
+environment variables such as `R_LIBS_SITE`, in the job's environment.
+:::
+
+## `Rscript` in a `#!` line
+
+`Rscript` is meant for executable scripts
+([`?Rscript`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/Rscript.html)):
+
+```r
+#!/usr/bin/Rscript --vanilla
+args <- commandArgs(trailingOnly = TRUE)
+cat("Hello,", args[1], "\n")
+```
+
+```bash
+chmod +x hello.R
+./hello.R world
+```
+
+```text
+Hello, world
+```
+
+- Options on the `#!` line go to `Rscript`; arguments to the script end up
+  in `commandArgs(trailingOnly = TRUE)`.
+- `#!/usr/bin/env Rscript` takes the first `Rscript` on `PATH`. With an
+  option, use `#!/usr/bin/env -S Rscript --vanilla`
+  ([GNU env](https://www.gnu.org/software/coreutils/manual/html_node/env-invocation.html#g_t_002dS_002f_002d_002dsplit_002dstring-usage-in-scripts)).
+
+## `R --help` and important flags
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+R --help
+```
+
+| Flag | What it does |
+|---|---|
+| `--vanilla` | `--no-save --no-restore --no-site-file --no-init-file --no-environ` |
+| `--no-init-file` | Skip the user profile (`./.Rprofile` or `~/.Rprofile`) |
+| `--no-site-file` | Skip `Rprofile.site` |
+| `--no-environ` | Skip `.Renviron` and `Renviron.site` |
+| `-e <expr>` | Run an expression; repeatable |
+| `-q` | Do not print the startup banner |
+| `--no-echo` | Do not echo input |
+| `--max-connections=N` | Raise R's limit on open connections (files, URLs, sockets; default 128, max 4096; [`?connections`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/connections.html)) |
+
+If a problem disappears under `R --vanilla`, it comes from a site or user
+startup file, or from a saved `.RData`.
+
+## `R CMD` administrator and developer tools
+
+`R CMD` runs tools that ship with R, with `R_HOME` and the toolchain
+already set up correctly. We use four of these today.
+
+```bash
+R CMD --help
+```
+
+| Command | Purpose |
+|---|---|
+| `R CMD INSTALL` | Install a package from source or tarball into a library |
+| `R CMD build` | Turn a source *directory* into a `.tar.gz` |
+| `R CMD check` | Run the full quality check suite on a tarball |
+| `R CMD config` | Report the build's compilers and flags |
+| `R CMD Rd2pdf`, `Sweave`, `Rprof` | The rest of the toolbox |
+
+Each command has its own help:
+
+```bash
+R CMD INSTALL --help
+```

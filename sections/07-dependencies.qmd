@@ -1,0 +1,243 @@
+---
+format: revealjs
+---
+
+# Dependencies {.dark-slide background-color="#111C26"}
+
+[BLOCK 4 &middot; PART A]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+## The five dependency fields
+
+The `DESCRIPTION` file for each package has the following information:
+
+| Field | Installed by default? | Attached? | Meaning |
+|---|---|---|---|
+| `Depends` | Yes | **Yes** | Needed, and attached before the package |
+| `Imports` | Yes | No | Needed; used through the namespace |
+| `LinkingTo` | Yes | No | Its **C/C++ headers** are needed at install time |
+| `Suggests` | No | No | Used in examples, tests, vignettes, or optionally |
+| `Enhances` | No | No | The package provides methods *for* it |
+
+`install.packages()` installs `Depends`, `Imports` and `LinkingTo` by
+default: the **strong** dependencies
+([`?install.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/install.packages.html)).
+
+## `Depends` vs `Imports`
+
+For `fitdistrplus`
+
+```text
+Depends: R (>= 3.5.0), MASS, grDevices, survival, methods
+Imports: stats, rlang
+```
+
+`Depends` "should nowadays be used rarely", only for packages meant to be
+on the user's search path. Use `Imports` for everything the package itself
+needs ([R-exts](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Package-Dependencies)).
+
+::: {.note}
+[Masking]{.note-label}
+`Depends` attaches the package, so it changes the user's search path. A
+package that `Depends: dplyr` attaches `dplyr`, and `dplyr::filter()` then
+masks `stats::filter()` in the user's session.
+:::
+
+The `R (>= x.y)` entry is what the default `R_version` filter of
+`available.packages()` uses. That is why a package can be "not available"
+on an older R.
+
+## `LinkingTo`: headers at build time
+
+```text
+LinkingTo: Rcpp, BH
+Imports: Rcpp
+```
+
+`LinkingTo` puts another package's headers on the compiler's include path.
+It applies only to installation
+([R-exts](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Package-Dependencies)).
+
+- `LinkingTo` packages must be installed **before** the build starts.
+- Upgrading `Rcpp` or `BH` changes what future builds compile against. It
+  does **not** recompile packages already installed.
+
+If you upgrade a `LinkingTo` package, reinstall the packages that link to
+it.
+
+## `Suggests` are not installed by default
+
+Without them:
+
+- Examples, tests and vignettes that use them cannot run
+- `R CMD check` stops with an error unless told to skip them
+- Optional features fail at run time with `there is no package called ...`
+
+```r
+install.packages("xml2")                          # strong only
+install.packages("xml2", dependencies = TRUE)     # + Suggests of xml2
+```
+
+`dependencies = TRUE` adds `Suggests` for the packages you name, and only
+strong dependencies for everything pulled in after that
+([`?install.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/install.packages.html)).
+
+::: {.note}
+[Site libraries]{.note-label}
+Install strong dependencies, then add the specific suggested packages your
+users need.
+:::
+
+## Strong vs all dependencies of `dplyr`
+
+::: {.demo-label}
+Live
+:::
+
+Fresh container, used until block 5:
+
+```bash
+docker run --rm -it --name rlab rocker/r-base bash
+R -q
+```
+
+```r
+ap <- available.packages()
+tools::package_dependencies("dplyr", ap)
+```
+
+```text
+$dplyr
+ [1] "cli"        "generics"   "glue"       "lifecycle"  "magrittr"
+ [6] "methods"    "pillar"     "R6"         "rlang"      "tibble"
+[11] "tidyselect" "utils"      "vctrs"
+```
+
+```r
+deps <- function(...) lengths(tools::package_dependencies("dplyr", ap, ...))
+deps(recursive = TRUE)                      # strong, recursive
+deps(which = "most", recursive = "strong")  # what dependencies = TRUE installs
+deps(which = "most", recursive = TRUE)      # Suggests all the way down
+```
+
+```text
+dplyr
+   18
+dplyr
+   90
+dplyr
+ 2405
+```
+
+CRAN on 2026-09-28. The numbers change daily.
+
+## "Most dependencies"
+
+`which = "most"` applies to `dplyr` itself. `recursive = "strong"` then
+follows only `Depends`, `Imports` and `LinkingTo`
+([`?package_dependencies`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/package_dependencies.html)).
+The result is:
+
+- `dplyr`'s strong dependencies, recursively
+- `dplyr`'s `Suggests`, and their strong dependencies, recursively
+- not the `Suggests` of any upstream package
+
+`install.packages(dependencies = TRUE)` installs the same set.
+
+## `tools::package_dependencies()` arguments
+
+```r
+package_dependencies(packages = NULL, db = NULL, which = "strong",
+                     recursive = FALSE, reverse = FALSE,
+                     verbose = getOption("verbose"))
+```
+
+| Argument | Notes |
+|---|---|
+| `db` | An `available.packages()` matrix. Pass it in; the default downloads the index again. |
+| `which` | `"strong"` (default), `"most"` (+ `Suggests`), `"all"` (+ `Enhances`), or field names |
+| `recursive` | `TRUE`, or field names to recurse over, e.g. `"strong"` |
+| `reverse` | `TRUE` gives reverse dependencies |
+
+Source: [`?package_dependencies`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/package_dependencies.html).
+
+## `NULL` means not in the index
+
+```r
+tools::package_dependencies(c("R6", "notapackage"), ap)
+```
+
+```text
+$R6
+character(0)
+
+$notapackage
+NULL
+```
+
+`character(0)` means "found, no dependencies". `NULL` means "not in the
+index"
+([`?package_dependencies`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/package_dependencies.html)).
+
+::: {.note}
+[Use it]{.note-label}
+When validating a package list, `NULL` flags a package that was archived,
+misspelled, or lives in a repository you have not configured.
+`names(which(vapply(deps, is.null, TRUE)))` lists them.
+:::
+
+## Reverse dependencies, by type
+
+```r
+for (w in c("Depends", "Imports", "LinkingTo", "Suggests"))
+  cat(sprintf("%-10s %d\n", w,
+      length(tools::package_dependencies("xml2", ap, which = w,
+                                         reverse = TRUE)[[1]])))
+```
+
+```text
+Depends      4
+Imports    473
+LinkingTo    1
+Suggests   213
+```
+
+The `Depends`, `Imports` and `LinkingTo` reverse dependencies need `xml2` to
+install and load. The `Suggests` ones need it only for examples, tests and
+optional features.
+
+Check these inside your own library before you upgrade a package there.
+
+## Procedure: resolve, review, impact
+
+1. **Resolve.** Compute strong recursive dependencies of the requested list
+   and record the resolved set with versions.
+2. **Review.** Check licences and CRAN check pages, and look for `NULL`
+   entries.
+3. **Impact.** For each resolved package that is already installed, list
+   the installed packages that depend on it. Test those after the upgrade.
+
+```r
+requested <- c("dplyr", "ggplot2", "xml2")
+resolved  <- unique(c(requested,
+  unlist(tools::package_dependencies(requested, ap, recursive = TRUE))))
+length(resolved)
+ap[intersect(resolved, rownames(ap)), c("Version", "NeedsCompilation")]
+```
+
+## Impact: installed packages that depend on an upgrade
+
+Compute reverse dependencies against your library, not against CRAN
+([`?package_dependencies`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/package_dependencies.html)):
+
+```r
+inst     <- installed.packages(lib.loc = "/opt/rlibs/4.6")
+upgraded <- intersect(resolved, rownames(inst))
+affected <- tools::package_dependencies(upgraded, db = inst,
+                                        reverse = TRUE, recursive = TRUE)
+sort(unique(unlist(affected)))
+```
+
+These are the packages to load and test after the upgrade.

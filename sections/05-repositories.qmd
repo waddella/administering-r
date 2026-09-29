@@ -1,0 +1,337 @@
+---
+format: revealjs
+---
+
+# Repositories {.dark-slide background-color="#111C26"}
+
+[BLOCK 3 &middot; PART A]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[A repository is a directory of tarballs with an index file.]{.subhead}
+
+
+## What is a repository
+
+`install.packages()` downloads from the repositories in
+`getOption("repos")`.
+
+A repository is a base URL with a fixed directory layout. It can be a CRAN
+mirror, Posit Package Manager, a local directory (`file://`), or any server that
+serves that layout
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Setting-up-a-package-repository)).
+
+```bash
+R -q --no-echo -e 'getOption("repos")'
+```
+
+## Repository layout
+
+```text
+<repo>/
+  src/contrib/
+    PACKAGES              <- the index, plain text, DCF format
+    PACKAGES.gz
+    PACKAGES.rds
+    R6_2.6.1.tar.gz
+    xml2_1.6.0.tar.gz
+    ...
+    Archive/              <- CRAN's convention, not part of the format
+```
+
+R downloads the index, then the tarballs it needs. We build a repository in
+block 6.
+
+## The `PACKAGES` index
+
+::: {.demo-label}
+Live
+:::
+
+[cran.r-project.org/src/contrib/PACKAGES](https://cran.r-project.org/src/contrib/PACKAGES)
+
+```text
+Package: a5R
+Version: 0.6.0
+Depends: R (>= 4.2)
+Imports: cli, rlang (>= 1.1.0), units, vctrs (>= 0.6.0), wk (>= 0.9.0)
+Suggests: arrow, knitr, pillar, rmarkdown, sf, terra, testthat (>=
+        3.0.0), tibble, withr
+License: Apache License (>= 2)
+MD5sum: ab65526f7628cd1862afe47209fa546b
+NeedsCompilation: yes
+Published: 2026-09-08 11:50:15 UTC
+```
+
+DCF format: `Field: value`, continuation lines indented, a blank line between
+records, the same format as `DESCRIPTION`.
+
+The plain file is about 7&nbsp;MB. R downloads `PACKAGES.rds` first, and
+falls back to `PACKAGES.gz` and `PACKAGES`
+([packages.R](https://github.com/wch/r-source/blob/trunk/src/library/utils/R/packages.R)).
+
+## What CRAN checks, and what it doesn't
+
+About 25,000 packages, maintained by a volunteer CRAN team
+([CRAN policy](https://cran.r-project.org/web/packages/policies.html)).
+
+CRAN requires:
+
+- The package passes `R CMD check`
+- Strong dependencies come from CRAN or Bioconductor
+- A licence that lets CRAN distribute it
+- Source for all components, for open-source licences
+
+The CRAN team can remove or modify packages without notice.
+
+What goes into your site library is your decision.
+
+## CRAN keeps one version; older ones are archived
+
+`src/contrib/` holds the current version of each package. Older versions
+move to `src/contrib/Archive/<pkg>/` and stay there
+([CRAN policy](https://cran.r-project.org/web/packages/policies.html)).
+
+[cran.r-project.org/src/contrib/Archive/xml2/](https://cran.r-project.org/src/contrib/Archive/xml2/)
+
+```text
+...
+xml2_1.3.8.tar.gz    2025-03-14   149K
+xml2_1.4.0.tar.gz    2025-08-20   150K
+xml2_1.4.1.tar.gz    2025-10-27   150K
+xml2_1.5.0.tar.gz    2025-11-17   151K
+xml2_1.5.1.tar.gz    2025-12-01   151K
+xml2_1.5.2.tar.gz    2026-01-17   151K
+```
+
+::: {.note}
+[Not reproducible]{.note-label}
+`install.packages("xml2")` installs whatever is current. Archived versions
+are not in `PACKAGES`, so R cannot resolve against them. Use the tarball
+URL, a snapshot repository, `remotes::install_version()` or `renv`.
+:::
+
+## Packages removed from CRAN
+
+CRAN archives packages whose check errors are not fixed, for example after
+a new R x.y.0 release
+([CRAN policy](https://cran.r-project.org/web/packages/policies.html)). An
+archived package leaves `PACKAGES`.
+
+```r
+# is anything we depend on already gone?
+db <- available.packages()
+ours <- c("R6", "xml2", "somepkg")
+setdiff(ours, rownames(db))
+```
+
+A local copy of every tarball you depend on protects you from this. We
+build one in block 6.
+
+## `available.packages()`
+
+::: {.demo-label}
+Live
+:::
+
+```r
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+ap <- available.packages()
+nrow(ap)
+colnames(ap)
+```
+
+```text
+[1] 25121
+
+ [1] "Package"               "Version"               "Priority"             
+ [4] "Depends"               "Imports"               "LinkingTo"            
+ [7] "Suggests"              "Enhances"              "License"              
+[10] "License_is_FOSS"       "License_restricts_use" "OS_type"              
+[13] "Archs"                 "MD5sum"                "NeedsCompilation"     
+[16] "File"                  "Published"             "Built"                
+[19] "Repository"           
+```
+
+```r
+ap["xml2", c("Version", "Imports", "NeedsCompilation")]
+```
+
+```text
+                         Version                          Imports
+                         "1.6.0" "cli, methods, rlang (>= 1.1.0)"
+                NeedsCompilation
+                           "yes"
+```
+
+## `PACKAGES` has no `SystemRequirements`
+
+```r
+ap["xml2", "SystemRequirements"]
+```
+
+```text
+Error in ap["xml2", "SystemRequirements"] : subscript out of bounds
+```
+
+CRAN's `PACKAGES` does not carry the field, so R cannot tell from the index
+which OS libraries a package needs. 
+
+`tools::CRAN_package_db()` reads a different file, CRAN's
+`web/packages/packages.rds`, with most `DESCRIPTION` fields of the current
+CRAN packages
+([`?CRAN_package_db`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/CRANtools.html)):
+
+```r
+db <- tools::CRAN_package_db()
+db[db$Package == "xml2", "SystemRequirements"]
+```
+
+```text
+[1] "libxml2: libxml2-dev (deb), libxml2-devel (rpm)"
+```
+
+It covers CRAN only.
+
+## Querying the index
+
+```r
+ap <- available.packages()
+
+# everything that needs a compiler
+sum(ap[, "NeedsCompilation"] == "yes")
+
+# published in the last week
+recent <- ap[as.Date(ap[, "Published"]) > Sys.Date() - 7, "Package"]
+length(recent)
+
+# packages with a licence we cannot accept
+ap[ap[, "License"] == "AGPL-3", "Package"]
+```
+
+The default filters drop packages for another R version, another OS, or a
+sub-architecture, and keep only the latest version of each package.
+`filters = character()` turns them off
+([`?available.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/available.packages.html)).
+
+## CRAN check results
+
+CRAN checks every package on 13 platform "flavors"
+([CRAN check flavors](https://cran.r-project.org/web/checks/check_flavors.html)).
+
+[cran.r-project.org/web/checks/check_results_xml2.html](https://cran.r-project.org/web/checks/check_results_xml2.html)
+
+| Flavor | Platform |
+|---|---|
+| `r-devel-linux-x86_64-debian-gcc` | R-devel, Debian, gcc |
+| `r-devel-linux-x86_64-fedora-clang` | R-devel, Fedora, clang |
+| `r-release-macos-arm64` | Current R, macOS arm64 |
+| `r-release-windows-x86_64` | Current R, Windows |
+| `r-oldrel-*` | Previous R |
+
+Read this page before you add a package to your site library.
+
+## CRAN checks reverse dependencies
+
+```r
+rd <- tools::package_dependencies("xml2", db = ap,
+                                  reverse = TRUE, which = "most")
+lengths(rd)
+```
+
+```text
+xml2
+ 688
+```
+
+Before submitting an update, a maintainer is expected to check the packages
+that depend on it. If the API changes, the affected maintainers get at least
+two weeks' notice
+([CRAN policy](https://cran.r-project.org/web/packages/policies.html)).
+
+::: {.note}
+[In your own library]{.note-label}
+Upgrading one package can break the packages that depend on it. Test the
+package set together.
+:::
+
+## Binary packages
+
+CRAN builds Windows and macOS binaries of the latest version of each
+package, for the current R and often for the previous one and R-devel. They must not depend on specific versions
+of external software
+([CRAN policy](https://cran.r-project.org/web/packages/policies.html)).
+
+```text
+src/contrib/                                  <- source, all platforms
+bin/windows/contrib/4.6/                      <- Windows, R 4.6
+bin/macosx/sonoma-arm64/contrib/4.6/          <- macOS arm64, R 4.6
+```
+
+A binary package is an installed package in an archive. Installing it needs
+no compiler.
+
+On Windows and macOS, CRAN packages must link external libraries
+statically, so the binaries need no system libraries at run time.
+
+## No CRAN binaries for Linux
+
+Linux binaries link against the shared libraries of one distribution
+release. Posit Package Manager builds them per distribution
+([Package Manager docs](https://docs.posit.co/rspm/admin/serving-binaries.html)):
+
+```text
+https://packagemanager.posit.co/cran/__linux__/noble/latest
+https://packagemanager.posit.co/cran/__linux__/rhel9/latest
+https://packagemanager.posit.co/cran/latest/bin/linux/noble-x86_64/4.6
+```
+
+The `__linux__/<distro>` form reads the R version and architecture from R's
+user agent. The `bin/linux/` form puts them in the URL.
+
+## Dated snapshots
+
+Package Manager serves CRAN as it was on a given date
+([Package Manager docs](https://docs.posit.co/rspm/admin/repositories.html)):
+
+```text
+https://packagemanager.posit.co/cran/2026-06-01
+https://packagemanager.posit.co/cran/__linux__/noble/2026-06-01
+```
+
+Against a snapshot, `install.packages("dplyr")` gets the same version every
+time, without pinning versions yourself.
+
+```r
+options(repos = c(
+  CRAN = "https://packagemanager.posit.co/cran/2026-06-01"
+))
+```
+
+## Multiple repositories
+
+`repos` is a named character vector. If a package is in more than one
+repository, R takes the **highest version**, and the first-named repository
+only on a tie
+([`?available.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/available.packages.html)).
+
+```r
+options(repos = c(
+  INTERNAL = "https://pkgs.example.com/prod",
+  CRAN     = "https://packagemanager.posit.co/cran/2026-06-01"
+))
+```
+
+An internal build overrides CRAN only if its version is at least as high.
+
+```r
+# where would this actually come from?
+ap <- available.packages()
+ap["dplyr", c("Version", "Repository")]
+```
+
+::: {.note}
+[Diagnostic]{.note-label}
+When a user reports an unexpected version, check the `Repository` column.
+:::

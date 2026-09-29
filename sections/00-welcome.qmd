@@ -1,0 +1,128 @@
+---
+format: revealjs
+---
+
+## About me
+
+Adrian Waddell. Senior Principal Software Engineer for Pharma & Life
+Sciences at Posit, PBC.
+
+Before Posit:
+
+- PhD in Statistics, University of Waterloo, Canada.
+- At **Roche**, led a project building R-based analysis and reporting tools
+  for clinical trial analysis, some of them now part of pharmaverse.
+- At **Genentech gRED**, led R and Python environment management for the
+  research HPC. EasyBuild, Gentoo Prefix, Lmod, Slurm, and a bespoke R
+  package manager.
+
+## Where this material comes from
+
+The gRED environment:
+
+- Bespoke R package manager, following the CRAN and Bioconductor release
+  model
+- Shared R environment deployments
+- 5,500 R packages, from CRAN, Bioconductor, and internal sources, resolved
+  and built as one set
+- Two releases a year, aligned with the Bioconductor schedule
+- Daily snapshots, so an analysis could be pinned to a date
+
+
+## What you will learn
+
+- Where R lives on disk, how it starts up, and how it finds packages
+- What to check first when a user reports that a package will not install
+- How to build a package set you can test, ship, and update deliberately
+
+We work mostly in a terminal. The aim is to know which layer a problem
+lives in, not to memorise flags.
+
+## Agenda
+
+| # | Block | Time |
+|:--|:------|:-----|
+| 1 | The R installation | 40 min |
+| 2 | Startup files and libraries | 40 min |
+|   | *break* | 15 min |
+| 3 | Repositories | 40 min |
+| 4 | Dependencies and system requirements | 30 min |
+|   | *break* | 10 min |
+| 5 | Building and checking packages | 30 min |
+| 6 | Local repositories and maintenance | 20 min |
+| 7 | Open discussion | 15 min |
+
+## Discussion
+
+Block 7 is a scheduled slot for real-world production issues, discussed as
+a group.
+
+Bring something concrete: a configuration you inherited and do not trust,
+an upgrade that went badly, a rule you cannot justify to an auditor.
+
+If your question fits the block we are in, ask it there rather than waiting.
+The timings have slack for it.
+
+## Slides
+
+These slides, the lab command list, and the instructor notes:
+
+[github.com/waddella/administering-r](https://github.com/waddella/administering-r)
+
+Everything is plain text.
+
+## The lab environment
+
+We use the `rocker/r-base` container:
+
+```bash
+docker pull rocker/r-base
+docker run --rm -it --name rlab rocker/r-base bash
+```
+
+`--rm` deletes the container on exit. Several blocks start from a fresh
+container.
+
+::: {.note}
+[Before we start]{.note-label}
+Please run the `docker pull` now. The image is about 400&nbsp;MB
+([Docker Hub](https://hub.docker.com/r/rocker/r-base/tags)).
+:::
+
+## No Docker? Use Posit Cloud
+
+If you cannot run Docker or Podman, you should have an invitation to a Posit
+Cloud workspace:
+
+[login.posit.cloud](https://login.posit.cloud/)
+
+It gives you R, a terminal, and a writable user library.
+
+::: {.note}
+[No root]{.note-label}
+You cannot `apt-get install` system dependencies or write to
+`$(R RHOME)/etc` and `/opt`. Demos that do (site configuration in block 2,
+system requirements in block 4, the local repository in block 6) are
+watch-along.
+:::
+
+## Two windows, one container
+
+You can keep a second shell open on the same container, for example to look at the
+filesystem while R is running.
+
+```bash
+docker exec -it rlab bash
+```
+
+Inside, `R` starts an interactive session and `q()` or `Ctrl-D` leaves it.
+
+## Reference documentation
+
+| Manual | What it answers |
+|---|---|
+| [R Installation and Administration](https://cran.r-project.org/doc/manuals/r-release/R-admin.html) | Build flags, libraries, environment variables, site configuration |
+| `?EnvVar` and the R-admin [environment variable index](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Environment-variable-index) | The environment variables R reads |
+| [Writing R Extensions](https://cran.r-project.org/doc/manuals/r-release/R-exts.html) | `DESCRIPTION` fields, dependency types, what `R CMD check` checks |
+| [CRAN Repository Policy](https://cran.r-project.org/web/packages/policies.html) | What CRAN will and will not accept, and why archiving happens |
+| `?Startup`, `?.libPaths`, `?install.packages` | The same material, offline, versioned with your R |

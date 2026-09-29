@@ -1,0 +1,41 @@
+/* Open Sans and Source Code Pro, variable TTFs. Posit ships
+   Light 300 / Regular 400 / Bold 700 -- there is no semibold. */
+@font-face {
+  font-family: "Open Sans";
+  src: url("fonts/OpenSans.ttf") format("truetype-variations"),
+       url("fonts/OpenSans.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Open Sans";
+  src: url("fonts/OpenSans-Italic.ttf") format("truetype-variations"),
+       url("fonts/OpenSans-Italic.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Code Pro";
+  src: url("fonts/SourceCodePro.ttf") format("truetype-variations"),
+       url("fonts/SourceCodePro.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Code Pro";
+  src: url("fonts/SourceCodePro-Italic.ttf") format("truetype-variations"),
+       url("fonts/SourceCodePro-Italic.ttf") format("truetype");
+  font-weight: 300 700;
+  font-style: italic;
+  font-display: swap;
+}
+/* The brand forbids the full-colour logo on a dark field, so the
+   reverse logo is painted in its place on dark slides. */
+.reveal:has(.slides section.present.dark-slide)::after,
+.reveal:has(#title-slide.present)::after,
+.reveal:has(.slides section.present.quarto-title-block)::after {
+  background-image: url("logos/posit-horiz-white.png");
+}

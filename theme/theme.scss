@@ -1,0 +1,505 @@
+/*-- scss:defaults --*/
+
+// ---------------------------------------------------------------------------
+// Colour tokens, taken from the Posit brand palette
+// ---------------------------------------------------------------------------
+$blue-base:    #447099;
+$gray-base:    #404041;
+$orange-base:  #EE6331;
+
+$white:         #FFFFFF;
+$off-white:     #F3F6F8;
+
+$blue-50:       #D0DBE5;
+$blue-100:      #A1B7CB;
+$blue-400:      #335472;
+$blue-500:      #22384C;
+$blue-600:      #111C26;
+
+$gray-100:      #CFCFCF;
+$gray-300:      #717171;   // body text on white
+$gray-600:      #212121;
+
+$orange-light:  #FAD8CB;
+
+// Fonts are declared in _quarto.yml's include-in-header, not here: Quarto
+// relocates this compiled stylesheet into slides_files/, so a relative
+// url() to assets/fonts would not resolve.
+$font-family-sans-serif: "Open Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif !default;
+$font-family-monospace:  "Source Code Pro", ui-monospace, "SF Mono", Menlo, Consolas, monospace !default;
+
+// Reveal.js theme variables
+$body-bg:               $white !default;
+$body-color:            $gray-300 !default;
+$presentation-font-size-root: 30px !default;
+$presentation-h1-font-size:   1.9em !default;
+$presentation-h2-font-size:   1.45em !default;
+$presentation-h3-font-size:   1.1em !default;
+$presentation-h4-font-size:   0.95em !default;
+$presentation-heading-color:  $gray-base !default;
+$presentation-heading-font-weight: 300 !default;   // headlines are Light
+$presentation-line-height:    1.45 !default;
+$link-color:            $blue-base !default;
+$link-color-hover:      #3276B5 !default;
+$code-block-font-size:  0.72em !default;
+$code-color:            $blue-400 !default;
+$selection-bg:          $blue-50 !default;
+
+/*-- scss:mixins --*/
+
+/*-- scss:rules --*/
+
+// ---------------------------------------------------------------------------
+// Base typography: headlines Light and flush left, body Regular.
+// ---------------------------------------------------------------------------
+.reveal {
+  font-family: $font-family-sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.reveal h1,
+.reveal h2,
+.reveal h3,
+.reveal h4 {
+  font-family: $font-family-sans-serif;
+  text-align: left;
+  text-transform: none;    // never ALL CAPS
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin-bottom: 0.6em;
+}
+
+.reveal h1,
+.reveal h2 {
+  font-weight: 300;        // Light
+}
+
+// Sub-headlines are Bold, in Posit Blue.
+.reveal h3,
+.reveal h4 {
+  font-weight: 700;
+  color: $blue-base;
+  letter-spacing: 0;
+}
+
+.reveal p,
+.reveal li {
+  text-align: left;
+}
+
+.reveal strong { font-weight: 700; color: $gray-base; }
+.reveal em     { font-style: italic; }
+
+.reveal ul,
+.reveal ol { margin-left: 1em; }
+
+.reveal li { margin-bottom: 0.35em; }
+
+.reveal ul li::marker { color: $blue-base; }
+.reveal ol li::marker { color: $blue-base; font-weight: 700; }
+
+// ---------------------------------------------------------------------------
+// Code. Source Code Pro is brand-legal here as a code face (not for body copy
+// or headlines); eyebrow styling below is the other sanctioned use.
+// ---------------------------------------------------------------------------
+.reveal code {
+  font-family: $font-family-monospace;
+  color: $blue-400;
+}
+
+.reveal pre {
+  box-shadow: none;
+  width: 100%;
+  margin: 0.5em 0;
+}
+
+// Quarto wraps highlighted blocks in div.sourceCode and gives it a white
+// border; the surface treatment belongs on that wrapper.
+.reveal div.sourceCode {
+  background-color: $off-white;
+  border: none !important;
+  border-left: 3px solid $blue-base !important;
+  border-radius: 0 4px 4px 0;
+  margin: 0.5em 0;
+}
+
+.reveal div.sourceCode pre code {
+  border-left: none;
+  border-radius: 0;
+}
+
+.reveal pre code {
+  font-family: $font-family-monospace;
+  background-color: $off-white;
+  border-left: 3px solid $blue-base;
+  border-radius: 0 4px 4px 0;
+  padding: 0.7em 0.9em;
+  max-height: 560px;
+  color: $gray-600;
+}
+
+// Console transcripts: shell / R output blocks that are not source code.
+.reveal pre.console code,
+.reveal .console pre code {
+  border-left-color: $gray-300;
+  color: $gray-600;
+}
+
+// ---------------------------------------------------------------------------
+// Eyebrows: Source Code Pro, UPPERCASE, Regular, +0.08em tracking.
+// ---------------------------------------------------------------------------
+.reveal .eyebrow {
+  font-family: $font-family-monospace;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.6em;
+  color: $blue-base;
+  margin-bottom: 0.4em;
+  display: block;
+}
+
+// On dark fields the eyebrow is orange (5.0:1 on #111C26 -- passes AA).
+.reveal .slide-background.dark ~ * .eyebrow,
+.reveal section.dark .eyebrow,
+.reveal .dark-slide .eyebrow {
+  color: $orange-base;
+}
+
+// 40x3px orange accent bar, the deck's one repeating graphic device.
+.reveal .accent-bar::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 3px;
+  background-color: $orange-base;
+  margin-bottom: 20px;
+}
+
+// ---------------------------------------------------------------------------
+// Dark slides (title + section dividers)
+// ---------------------------------------------------------------------------
+.reveal section.dark-slide,
+.reveal .dark-slide {
+  h1, h2, h3, h4 { color: $white; }
+  h3, h4 { color: $blue-50; }
+  p, li  { color: $white; }
+  .eyebrow { color: $orange-base; }
+  .subhead { color: $blue-50; font-weight: 700; }
+  code { color: $blue-50; }
+}
+
+// Title slide. Laid out as a flush-left stack rather than Quarto's default
+// centred block, and given the dark opener treatment.
+//
+// Quarto emits this slide as `section.quarto-title-block` here and as
+// `#title-slide` in other configurations, so both selectors are used --
+// which is exactly what Quarto's own stylesheet does.
+#title-slide,
+.reveal .slides section.quarto-title-block {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+  text-align: left;
+
+  // 40x3px orange accent bar above the title, as on the divider slides.
+  &::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 3px;
+    background-color: $orange-base;
+    margin-bottom: 26px;
+    flex: none;
+  }
+
+  .title {
+    font-weight: 300;
+    font-size: 1.55em;
+    color: $white;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+    margin: 0;
+    max-width: 30em;
+  }
+
+  .subtitle {
+    font-weight: 700;
+    font-size: 0.72em;
+    color: $blue-50;
+    margin: 0.6em 0 0 0;
+    max-width: 44em;
+  }
+
+  .quarto-title-authors,
+  .quarto-title-author {
+    display: block;
+    text-align: left;
+    padding: 0;
+    margin: 0;
+  }
+
+  .quarto-title-authors { margin-top: 1.6em; }
+
+  .author, .quarto-title-author-name {
+    font-weight: 400;
+    font-size: 0.6em;
+    color: $white;
+    text-align: left;
+    margin: 0;
+  }
+
+  .institute, .quarto-title-affiliation, .date {
+    font-weight: 400;
+    font-size: 0.52em;
+    color: $blue-100;
+    text-align: left;
+    margin: 0.15em 0 0 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Callouts, cards, and small utilities
+// ---------------------------------------------------------------------------
+
+// Numbered feature card: Light Blue 1 fill, 3px Posit Blue left border.
+.reveal .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  margin-top: 0.5em;
+}
+.reveal .card {
+  background-color: $blue-50;
+  border-left: 3px solid $blue-base;
+  border-radius: 0 12px 12px 0;
+  padding: 16px 20px;
+
+  .num {
+    font-family: $font-family-monospace;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    font-size: 0.66em;
+    color: $blue-400;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .card-title {
+    font-weight: 700;
+    color: $gray-base;
+    font-size: 0.86em;
+    display: block;
+    margin-bottom: 4px;
+  }
+  p, li { color: $gray-base; font-size: 0.8em; margin: 0; }
+}
+
+// Two-column helper
+.reveal .cols {
+  display: flex;
+  gap: 40px;
+  align-items: flex-start;
+
+  > * { flex: 1; min-width: 0; }
+}
+
+// Emphasis note. Left border carries the meaning together with the label text,
+// so nothing depends on colour alone.
+.reveal .note {
+  border-left: 3px solid $orange-base;
+  background-color: $off-white;
+  border-radius: 0 12px 12px 0;
+  padding: 12px 20px;
+  margin: 0.6em 0;
+
+  p { color: $gray-base; font-size: 0.84em; margin: 0; }
+  .note-label {
+    font-family: $font-family-monospace;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.64em;
+    color: #B14A23;   // orange-dark, 5.4:1 on off-white
+    display: block;
+    margin-bottom: 6px;
+  }
+}
+
+// Live-demo marker for the instructor.
+.reveal .demo-label {
+  font-family: $font-family-monospace;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.55em;
+  color: $white;
+  background-color: $blue-base;
+  border-radius: 4px;
+  padding: 4px 10px;
+  display: inline-block;
+  margin-bottom: 0.5em;
+}
+
+// Skip marker: slides kept for reference that the instructor does not present.
+// Mark a slide with `## Title {.skip}`. The label text carries the meaning, so
+// nothing depends on colour alone.
+.reveal .slides section.skip::before {
+  content: "Skip \00B7  reference only";
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: $font-family-monospace;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.55em;
+  color: $white;
+  background-color: $gray-base;   // white on Posit Gray is 10.4:1 -- passes AA
+  border-radius: 4px;
+  padding: 4px 10px;
+}
+
+// Tables
+.reveal table {
+  font-size: 0.72em;
+  border-collapse: collapse;
+  margin: 0.4em 0;
+
+  th {
+    font-weight: 700;
+    color: $gray-base;
+    text-align: left;
+    border-bottom: 2px solid $blue-base;
+    padding: 8px 14px 8px 0;
+  }
+  td {
+    color: $gray-300;
+    border-bottom: 1px solid #E2E8EE;
+    padding: 7px 14px 7px 0;
+    vertical-align: top;
+  }
+  code { font-size: 0.95em; }
+}
+
+// Smaller type for dense slides -- still >= 24px at the 30px root.
+// Not used in the deck: it reads badly from the back of a room. Kept only
+// because Quarto examples reference the class.
+.reveal .smaller  { font-size: 0.9em; }
+.reveal .smallest { font-size: 0.8em; }
+
+// Vertical spacers. Used as an empty fenced div, same shape as .accent-bar:
+//
+//   ::: {.vspace}
+//   :::
+//
+.reveal .vspace-sm { height: 20px; }
+.reveal .vspace    { height: 45px; }
+.reveal .vspace-lg { height: 90px; }
+
+.reveal .vspace-sm,
+.reveal .vspace,
+.reveal .vspace-lg { width: 100%; flex: none; }
+
+// Pushes whatever follows to the bottom of the slide.
+.reveal .vfill { flex: 1 1 auto; min-height: 20px; }
+
+// A slide that needs .vfill has to be a flex column; dividers already are.
+.reveal section.stack-bottom {
+  display: flex !important;
+  flex-direction: column;
+  height: 100%;
+}
+
+// Footer / logo tab
+// Quarto puts its slide-menu button in the bottom-left corner, so the footer
+// text is inset to clear it.
+.reveal .footer {
+  font-size: 0.46em;
+  color: $gray-300;
+  font-weight: 400;
+  padding-left: 46px;
+}
+
+.reveal .slide-logo {
+  max-height: 34px !important;
+  bottom: 12px !important;
+  right: 16px !important;
+}
+
+// Progress bar and controls in brand blue
+.reveal .progress { color: $orange-base; height: 4px; }
+.reveal .controls { color: $blue-base; }
+
+// Visible focus state for keyboard users
+.reveal a:focus-visible,
+.reveal button:focus-visible {
+  outline: 3px solid rgba(50, 118, 181, 0.55);
+  outline-offset: 2px;
+}
+
+// ---------------------------------------------------------------------------
+// Divider slide layout. The eyebrow must read above the headline, but the H1
+// comes first in the DOM, so we reorder with flexbox rather than contorting
+// the markdown.
+// ---------------------------------------------------------------------------
+.reveal section.dark-slide {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+
+  // Pandoc wraps a bracketed span in its own paragraph, so the flex children
+  // are the <p> elements rather than the spans -- hence the :has() selectors.
+  // Everything unrecognised sorts last.
+  > *                  { order: 9; }
+  > p:has(> .eyebrow)  { order: 1; margin-bottom: 0; }
+  > .accent-bar        { order: 2; }
+  > h1                 { order: 3; font-size: 1.7em; margin: 0 0 0.4em 0; }
+  > p:has(> .subhead)  { order: 4; }
+
+  .subhead { font-size: 0.8em; max-width: 26em; display: inline-block; }
+}
+
+.reveal section.dark-slide .accent-bar::before {
+  margin: 14px 0 22px 0;
+}
+
+// ---------------------------------------------------------------------------
+// Logo and footer on dark slides.
+//
+// Quarto renders a single shared `.slide-logo` element outside the slides
+// container, so it cannot be styled per slide. The brand forbids the
+// full-colour logo on a dark field, so when the current slide is dark we hide
+// that element and paint the reverse logo in its place instead.
+// Aspect ratio of the supplied PNG is 2867x781.
+// ---------------------------------------------------------------------------
+.reveal:has(.slides section.present.dark-slide),
+.reveal:has(#title-slide.present),
+.reveal:has(.slides section.present.quarto-title-block) {
+  .slide-logo { visibility: hidden; }
+
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: 12px;
+    right: 16px;
+    width: 125px;      // 34px * 3.671
+    height: 34px;
+    background-repeat: no-repeat;
+    background-position: right center;
+    background-size: contain;
+    // background-image is set in include-in-header, where the URL resolves
+    // against slides.html rather than the relocated stylesheet.
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  // Posit Blue 1 on Dark Blue 3 is 7.4:1 -- comfortably AA for small text.
+  .footer, .footer p    { color: $blue-100; }
+  .slide-number,
+  .slide-number a       { color: $blue-100; }
+}

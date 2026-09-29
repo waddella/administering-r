@@ -1,0 +1,261 @@
+---
+format: revealjs
+---
+
+# `R CMD check` {.dark-slide background-color="#111C26"}
+
+[BLOCK 5 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[Checking packages against your own R and system libraries.]{.subhead}
+
+## Check on your machine, not CRAN's
+
+`R CMD check` installs the package, checks its metadata, code and
+documentation, and runs its examples and tests
+([Checking packages](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Checking-packages)).
+
+The question differs by role:
+
+::: {.cards}
+::: {.card}
+[01]{.num}
+[Developer]{.card-title}
+"Is my package good enough for CRAN?"
+:::
+::: {.card}
+[02]{.num}
+[Administrator]{.card-title}
+"Does this package set work **on my machine**, with **my** system
+libraries and **my** R build?"
+:::
+:::
+
+## Running it
+
+::: {.demo-label}
+Live
+:::
+
+```bash
+mkdir -p /tmp/dl && cd /tmp/dl
+R -q -e "download.packages('MASS', destdir='.')"
+R CMD check --no-manual MASS_7.3-66.tar.gz
+```
+
+```text
+* using log directory ‘/tmp/dl/MASS.Rcheck’
+* using R version 4.6.1 (2026-06-24)
+* using platform: x86_64-pc-linux-gnu
+* R was compiled by
+    x86_64-linux-gnu-gcc (Debian 15.3.0-1) 15.3.0
+    GNU Fortran (Debian 15.3.0-1) 15.3.0
+* running under: Debian GNU/Linux forky/sid
+* using session charset: UTF-8
+* current time: 2026-09-29 02:05:51 UTC
+* using option ‘--no-manual’
+* checking for file ‘MASS/DESCRIPTION’ ... OK
+* this is package ‘MASS’ version ‘7.3-66’
+* checking package namespace information ... OK
+* checking package dependencies ... OK
+...
+  Running ‘regression.R’
+  Comparing ‘regression.Rout’ to ‘regression.Rout.save’ ... OK
+  Running ‘rlm.R’
+  Running ‘scripts.R’
+ OK
+* DONE
+
+Status: OK
+```
+
+The header records the R version, compiler, and OS the check ran under.
+
+## Missing `Suggests` fail the check
+
+```bash
+R -q -e "download.packages('R6', destdir='.')"
+R CMD check --no-manual R6_2.6.1.tar.gz
+```
+
+```text
+* checking package dependencies ... ERROR
+Packages suggested but not available: 'lobstr', 'testthat'
+
+The suggested packages are required for a complete check.
+Checking can be attempted without them by setting the environment
+variable _R_CHECK_FORCE_SUGGESTS_ to a false value.
+
+See section 'The DESCRIPTION file' in the 'Writing R Extensions' manual.
+* DONE
+
+Status: 1 ERROR
+```
+
+R6's `Suggests` (`lobstr`, `testthat`) are not installed, and `check`
+stops. `_R_CHECK_FORCE_SUGGESTS_` is true by default
+([R Internals](https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Tools)).
+
+## Skip or install `Suggests`
+
+```bash
+# 1. accept an incomplete check
+_R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual R6_2.6.1.tar.gz
+```
+
+```bash
+# 2. install the suggested packages, and get a complete one
+R -q -e 'install.packages(c("lobstr", "testthat"))'
+R CMD check --no-manual R6_2.6.1.tar.gz
+```
+
+::: {.note}
+[Which to choose]{.note-label}
+For a release, option 2: the tests should actually run. With option 1 the
+check runs, but examples and tests that need a missing package can fail
+or be skipped.
+:::
+
+
+## Keep the `.Rcheck` directory
+
+```bash
+ls R6.Rcheck
+```
+
+```text
+00_pkg_src  00check.log  00install.out  R6  R6-Ex.R  R6-Ex.Rout  tests
+```
+
+| File | Contents |
+|---|---|
+| `00check.log` | The full check transcript |
+| `00install.out` | Output of the install step, where build errors are |
+| `R6-Ex.R`, `R6-Ex.Rout` | The examples, extracted, and their output |
+| `tests/` | Test output, including `*.Rout.fail` on failure |
+| `R6/` | The package as installed during the check |
+
+::: {.note}
+[For a validated environment]{.note-label}
+`00check.log` records what was checked, on which R and OS, and the result.
+Keep it with the release.
+:::
+
+## Useful check flags
+
+| Flag | Use |
+|---|---|
+| `--as-cran` | Settings similar to CRAN's submission checks |
+| `--no-manual` | Do not build the PDF and HTML manuals |
+| `--no-build-vignettes` | Do not build vignette outputs |
+| `--no-examples`, `--no-tests` | Skip examples, or the `tests/` directory |
+| `-o <dir>` | Where to write the `.Rcheck` directory |
+| `-l`, `--library=` | Library for the *test installation* of the package |
+
+Dependencies come from the normal library path. To check against a
+specific library, set `R_LIBS`
+([Checking packages](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Checking-packages)):
+
+```bash
+R_LIBS=/opt/rlibs/4.6 R CMD check --no-manual -o /var/log/rcheck \
+  xml2_1.6.0.tar.gz
+```
+
+## `_R_CHECK_*` environment variables
+
+```bash
+_R_CHECK_FORCE_SUGGESTS_=false  # do not error on missing Suggests
+_R_CHECK_TIMINGS_=10            # report timings of 10 s or more
+_R_CHECK_INSTALL_DEPENDS_=true  # test-install with only Depends/Imports/LinkingTo
+_R_CHECK_SUGGESTS_ONLY_=true    # run examples/tests with only declared
+                                # Depends/Imports/Suggests available
+```
+
+All are listed in [R Internals](https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Tools).
+
+`R CMD check` and `R CMD build` run R with `--vanilla`, so `Renviron.site`,
+`Rprofile.site` and the user files are not read. Set variables in the
+environment, or in
+`~/.R/check.Renviron`; `R_CHECK_ENVIRON` points to a different file
+([Checking and building packages](https://cran.r-project.org/doc/manuals/r-release/R-exts.html#Checking-and-building-packages)).
+
+```bash
+export R_CHECK_ENVIRON=/etc/R/check.Renviron
+```
+
+## Cohort testing
+
+Check the whole set you intend to release, together, against a fresh
+library. The example uses the repository `/opt/pkgrepo` from the next
+section.
+
+```r
+work <- "/tmp/cohort"
+dir.create(work)
+file.copy(Sys.glob("/opt/pkgrepo/src/contrib/*.tar.gz"), work)
+
+options(repos = c(LOCAL = "file:///opt/pkgrepo"))
+tools::check_packages_in_dir(work,
+  check_args = c("--no-manual", "--no-build-vignettes"),
+  Ncpus      = 8)
+```
+
+`check_packages_in_dir()` installs what the checks need into
+`<dir>/Library`, from `getOption("repos")`, then checks every tarball and
+writes the results to `<dir>/Outputs`
+([`?check_packages_in_dir`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/check_packages_in_dir.html)).
+It writes into `dir`, so use a scratch copy, not the repository.
+
+## Reading a cohort result
+
+```r
+tools::summarize_check_packages_in_dir_results(work)
+tools::check_packages_in_dir_details(work)
+tools::check_packages_in_dir_changes(work, old = "/tmp/cohort-2026.06")
+```
+
+- **Zero ERRORs.** An ERROR means the package does not work here. Do not
+  ship it.
+- **Triaged WARNINGs.** Record the decision for each.
+- **Changes since last time.** `check_packages_in_dir_changes()` compares
+  with a previous run. Keep the previous run.
+
+## Reverse dependency checking
+
+`reverse` also checks the packages that depend on the ones in `dir`. It
+finds them in the given repositories, downloads them into `dir`, and
+prefixes their results with `rdepends_`
+([`?check_packages_in_dir`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/check_packages_in_dir.html)).
+
+```r
+tools::check_packages_in_dir(work,
+  reverse = list(repos = "file:///opt/pkgrepo", which = "most"))
+```
+
+For a package on CRAN, [`revdepcheck`](https://github.com/r-lib/revdepcheck)
+checks each reverse dependency with the CRAN version and your local version,
+and reports the difference.
+
+::: {.note}
+[Your repository only]{.note-label}
+With `repos` pointing at your repository, only the reverse dependencies in
+your set are checked, not every one on CRAN.
+:::
+
+## A release procedure
+
+```text
+1.  Resolve the requested package list to a versioned set
+2.  Download every tarball into a staging repository
+3.  write_PACKAGES()
+4.  Install the set into a clean, empty library
+5.  check_packages_in_dir() over the set
+6.  Triage: zero ERRORs, WARNINGs recorded and accepted
+7.  Compare with the previous release's results
+8.  Promote the staging repository to production
+9.  Archive the .Rcheck logs with the release
+```
+
+The next section covers steps 1 to 3.

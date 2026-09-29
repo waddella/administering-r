@@ -1,0 +1,309 @@
+---
+format: revealjs
+---
+
+# Libraries and the search path {.dark-slide background-color="#111C26"}
+
+[BLOCK 2 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+## A library is a directory
+
+One subdirectory per installed package
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Managing-libraries)).
+
+```bash
+ls /usr/lib/R/library
+```
+
+You can back up a library with `tar`.
+
+## An installed package
+
+```bash
+ls /usr/lib/R/library/grid
+```
+
+```text
+DESCRIPTION  doc  help  html  INDEX  libs  Meta  NAMESPACE  R
+```
+
+| Entry | What it is |
+|---|---|
+| `DESCRIPTION` | Metadata, plus a `Built:` field added at install time |
+| `Meta/` | Indices R uses to load the package |
+| `R/` | `pkg.rdb`, `pkg.rdx`: a lazy-load database, not source files |
+| `libs/` | `pkg.so`, only for packages with compiled code |
+| `help/`, `html/` | Rendered documentation |
+
+The `R/` directory holds serialized objects
+([R-ints](https://cran.r-project.org/doc/manuals/r-release/R-ints.html#Lazy-loading)).
+
+The installed package is not the source package.
+
+## The `Built:` field
+
+```bash
+tail -1 /usr/lib/R/site-library/littler/DESCRIPTION
+```
+
+```text
+Built: R 4.6.0; x86_64-pc-linux-gnu; 'Sun, 12 Apr 2026 10:21:37 -0500'; unix
+```
+
+`library()` uses this field. It warns about packages built under a newer R.
+A package built under an older 4.x minor version loads without complaint
+([library.R](https://github.com/wch/r-source/blob/trunk/src/library/base/R/library.R),
+[namespace.R](https://github.com/wch/r-source/blob/trunk/src/library/base/R/namespace.R)).
+
+Compiled packages can still break across minor versions: the R 4.6.0 upgrade
+notes for Debian warn that packages such as `rlang` and `data.table` may
+break until they are reinstalled
+([CRAN Debian page](https://cran.r-project.org/bin/linux/debian/)). Keep one
+library per R minor version.
+
+## System, site and user libraries
+
+| R object | Set from | Purpose |
+|---|---|---|
+| `.Library` | Fixed: `$(R RHOME)/library` | Base and recommended packages |
+| `.Library.site` | `R_LIBS_SITE`, else `$(R RHOME)/site-library`; can be reassigned in `Rprofile.site` | Packages the site provides |
+| *(user)* | `R_LIBS_USER`, only if the directory exists | Packages one user installed |
+
+Only directories that exist at startup are kept
+([`?.libPaths`](https://stat.ethz.ch/R-manual/R-devel/library/base/html/libPaths.html)).
+
+```r
+.Library
+.Library.site
+```
+
+```text
+[1] "/usr/lib/R/library"
+
+[1] "/usr/local/lib/R/site-library" "/usr/lib/R/site-library"
+```
+
+On Debian, `/usr/lib/R/site-library` holds the `r-cran-*` packages from
+`apt`, and `install.packages()` writes to `/usr/local/lib/R/site-library`
+([CRAN Debian page](https://cran.r-project.org/bin/linux/debian/)).
+
+::: {.note}
+[Setting the site library]{.note-label}
+R-admin recommends setting `.Library.site` in `Rprofile.site`. Setting
+`R_LIBS_SITE` also works but is "not recommended"
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Managing-libraries)).
+:::
+
+## How `.libPaths()` works
+
+```r
+.libPaths()
+```
+
+```text
+[1] "/usr/local/lib/R/site-library"
+[2] "/usr/lib/R/site-library"
+[3] "/usr/lib/R/library"
+```
+
+```r
+base::.libPaths
+```
+
+```text
+function (new, include.site = TRUE) 
+{
+    if (!missing(new)) {
+        new <- Sys.glob(path.expand(new))
+        paths <- c(new, if (include.site) .Library.site, .Library)
+        paths <- paths[dir.exists(paths)]
+        .lib.loc <<- unique(normalizePath(paths, "/"))
+    }
+    else .lib.loc
+}
+<bytecode: 0x5555558f9db0>
+<environment: 0x5555558f5250>
+```
+
+1. **`.Library` is always appended.** You cannot drop the base library.
+2. **Missing directories are dropped without a warning** (`dir.exists()`).
+3. **Position 1 is the install target** for `install.packages()` and
+   `R CMD INSTALL` (if writable).
+4. **`include.site = FALSE` drops the site libraries.**
+
+## Missing directories are dropped silently
+
+::: {.demo-label}
+Live
+:::
+
+`R_LIBS_USER` is set in a fresh container, but the user library is not on
+the search path:
+
+```r
+Sys.getenv("R_LIBS_USER")
+dir.exists(Sys.getenv("R_LIBS_USER"))
+.libPaths()
+```
+
+```text
+[1] "/root/R/x86_64-pc-linux-gnu-library/4.6"
+
+[1] FALSE
+
+[1] "/usr/local/lib/R/site-library" "/usr/lib/R/site-library"
+[3] "/usr/lib/R/library"
+```
+
+The directory does not exist. Create it and it appears:
+
+```r
+dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE)
+.libPaths(Sys.getenv("R_LIBS_USER"))
+.libPaths()
+```
+
+```text
+[1] "/root/R/x86_64-pc-linux-gnu-library/4.6"
+[2] "/usr/local/lib/R/site-library" "/usr/lib/R/site-library"
+[4] "/usr/lib/R/library"
+```
+
+## Drop the user library: `.libPaths("")`
+
+```r
+.libPaths("")               # "" does not exist, so it is dropped
+.libPaths()                 # site + base remain
+```
+
+```text
+[1] "/usr/local/lib/R/site-library" "/usr/lib/R/site-library"
+[3] "/usr/lib/R/library"
+```
+
+Use it to test whether a problem goes away without the user's own packages.
+
+::: {.note}
+[Session only]{.note-label}
+`.libPaths("")` changes the current session and deletes nothing. The next
+R session computes the path again, and the user library is back.
+:::
+
+## Installs go to `.libPaths()[1]`
+
+::: {.demo-label}
+Live
+:::
+
+Start a new R session, so the user library is back on the path. `R6` has
+no `Imports` and no compiled code.
+
+```r
+install.packages("R6")
+```
+
+```text
+Installing package into ‘/root/R/x86_64-pc-linux-gnu-library/4.6’
+(as ‘lib’ is unspecified)
+trying URL 'https://packagemanager.posit.co/cran/latest/src/contrib/R6_2.6.1.tar.gz'
+Content type 'binary/octet-stream' length 64414 bytes (62 KB)
+==================================================
+downloaded 62 KB
+
+* installing *source* package ‘R6’ ...
+** this is package ‘R6’ version ‘2.6.1’
+** package ‘R6’ successfully unpacked and MD5 sums checked
+** using staged installation
+** R
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+*** copying figures
+** building package indices
+** testing if installed package can be loaded from temporary location
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (R6)
+
+The downloaded source packages are in
+        ‘/tmp/RtmpBVGwma/downloaded_packages’
+```
+
+`(as 'lib' is unspecified)` means R used `.libPaths()[1]`
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Installing-packages)).
+
+## Find where a package is installed
+
+```r
+list.files(.libPaths()[1])
+```
+
+```text
+[1] "R6"
+```
+
+```r
+list.files(file.path(.libPaths()[1], "R6"))
+```
+
+```text
+[1] "DESCRIPTION" "help"  "html"  "INDEX"  "LICENSE"
+[6] "Meta"  "NAMESPACE"  "NEWS.md"  "R"  "README.md"
+```
+
+From inside R: `find.package("R6")`, `packageDescription("R6")$LibPath`, and
+`installed.packages(lib.loc = ...)` for one library.
+
+## Choose the target library
+
+```r
+# 1. implicit: .libPaths()[1]
+install.packages("R6")
+
+# 2. explicit, from R
+dir.create("/opt/rlibs/4.6", recursive = TRUE)
+install.packages("R6", lib = "/opt/rlibs/4.6")
+```
+
+```bash
+ls /opt/rlibs/4.6/
+rm -Rf /opt/rlibs/4.6/R6
+```
+
+```bash
+# 3. explicit, from the shell
+Rscript -e 'download.packages("R6", destdir = ".")'
+R CMD INSTALL --library=/opt/rlibs/4.6 R6_*.tar.gz
+```
+
+In scripts and Dockerfiles, name the library.
+
+## Library layout for a shared server
+
+- **Site library.** `/opt/rlibs/<R version>`. Owned by root, readable by
+  everyone. The packages your organisation supports.
+- **User library.** `R_LIBS_USER`, per user and R version. For exploration.
+- **Project library.** `renv`, per project.
+
+Point `.Library.site` at a path outside `$(R RHOME)`, such as `/opt/rlibs/4.6`,
+so every 4.6.x installation can use it and reinstalling R does not remove it.
+
+::: {.note}
+[Recommendation]{.note-label}
+Keep the site library read-only for users. Install into it from one
+account or one CI job, from a recorded package list.
+:::
+
+## Library commands
+
+| Question | Command |
+|---|---|
+| What is on the search path? | `.libPaths()` |
+| Where will the next install go? | `.libPaths()[1]` |
+| Where is this package? | `find.package("pkg")` |
+| What is in this library? | `installed.packages(lib.loc = "...")[, "Version"]` |
+| Is the user library the problem? | `.libPaths("")`, then retry |
+| Why is my path ignored? | `dir.exists("...")` |

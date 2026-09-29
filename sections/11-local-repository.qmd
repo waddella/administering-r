@@ -1,0 +1,212 @@
+---
+format: revealjs
+---
+
+# Building a local repository {.dark-slide background-color="#111C26"}
+
+[BLOCK 6 &middot; PART A]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[Resolve, download, index.]{.subhead}
+
+## Why a local repository
+
+- **Not affected by CRAN archiving.** The tarballs you depend on are on your
+  disk.
+- **A directory you can copy.** You can `tar` it, checksum it, and move it to
+  an air-gapped network.
+- **A release unit.** "Version 2026.09 of our R environment" becomes one
+  directory with a checksum.
+
+It works with plain `install.packages()`.
+
+## Resolve the package set
+
+::: {.demo-label}
+Live
+:::
+
+```r
+options(repos = c(
+  CRAN = "https://packagemanager.posit.co/cran/2026-06-01"
+))
+
+requested <- c("xml2", "R6")
+
+ap    <- available.packages()
+wants <- unique(c(requested,
+                  unlist(tools::package_dependencies(requested, ap,
+                                                     recursive = TRUE))))
+
+# drop base and recommended -- they ship with R
+wants <- setdiff(wants, rownames(installed.packages(priority = c("base", "recommended"))))
+wants
+```
+
+```text
+[1] "xml2" "R6" "cli" "rlang"
+```
+
+The source is a dated snapshot, so the same code resolves to the same set
+later.
+
+## Download the tarballs
+
+```r
+repo <- "/opt/pkgrepo"
+dir.create(file.path(repo, "src", "contrib"), recursive = TRUE)
+
+got <- download.packages(wants,
+                         destdir = file.path(repo, "src", "contrib"),
+                         type    = "source")
+got
+```
+
+```text
+     [,1]    [,2]
+[1,] "xml2"  "/opt/pkgrepo/src/contrib/xml2_1.5.2.tar.gz"
+[2,] "R6"    "/opt/pkgrepo/src/contrib/R6_2.6.1.tar.gz"
+[3,] "cli"   "/opt/pkgrepo/src/contrib/cli_3.6.6.tar.gz"
+[4,] "rlang" "/opt/pkgrepo/src/contrib/rlang_1.2.0.tar.gz"
+```
+
+::: {.note}
+[Keep `got`]{.note-label}
+`download.packages()` returns the names and file paths of what it actually
+downloaded
+([`?download.packages`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/download.packages.html)).
+Write it to a CSV next to the repository as the manifest.
+:::
+
+## Index with `write_PACKAGES()`
+
+```r
+tools::write_PACKAGES(file.path(repo, "src", "contrib"), verbose = TRUE)
+```
+
+```text
+Processing packages:
+  /opt/pkgrepo/src/contrib/cli_3.6.6.tar.gz
+  /opt/pkgrepo/src/contrib/R6_2.6.1.tar.gz
+  /opt/pkgrepo/src/contrib/rlang_1.2.0.tar.gz
+  /opt/pkgrepo/src/contrib/xml2_1.5.2.tar.gz
+done
+```
+
+```r
+list.files(file.path(repo, "src", "contrib"))
+```
+
+```text
+[1] "cli_3.6.6.tar.gz"   "PACKAGES"           "PACKAGES.gz"
+[4] "PACKAGES.rds"       "R6_2.6.1.tar.gz"    "rlang_1.2.0.tar.gz"
+[7] "xml2_1.5.2.tar.gz"
+```
+
+Tarballs plus `PACKAGES` is a complete R repository.
+
+## The generated `PACKAGES`
+
+```bash
+cat /opt/pkgrepo/src/contrib/PACKAGES
+```
+
+```text
+Package: cli
+Version: 3.6.6
+Depends: R (>= 3.4)
+Imports: utils
+...
+
+Package: R6
+Version: 2.6.1
+Depends: R (>= 3.6)
+Suggests: lobstr, testthat (>= 3.0.0)
+License: MIT + file LICENSE
+MD5sum: b33833f3cbd24baf862a2c87b5bae13a
+NeedsCompilation: no
+...
+```
+
+`write_PACKAGES()` reads each tarball's `DESCRIPTION` and writes a fixed
+set of fields. `SystemRequirements` is not one of them, but you can add it
+with `fields = "SystemRequirements"`
+([`?write_PACKAGES`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/writePACKAGES.html)).
+
+## Install from it
+
+::: {.demo-label}
+Live
+:::
+
+```r
+available.packages(repos = "file:///opt/pkgrepo")[, c("Version", "Repository")]
+```
+
+```text
+      Version Repository
+cli   "3.6.6" "file:///opt/pkgrepo/src/contrib"
+R6    "2.6.1" "file:///opt/pkgrepo/src/contrib"
+rlang "1.2.0" "file:///opt/pkgrepo/src/contrib"
+xml2  "1.5.2" "file:///opt/pkgrepo/src/contrib"
+```
+
+`xml2` compiles against `libxml2`. This is the block 5 container, which
+already has `libxml2-dev`:
+
+```r
+dir.create("/tmp/testlib")
+.libPaths("/tmp/testlib", include.site = FALSE)   # hide the site library
+install.packages("xml2", repos = "file:///opt/pkgrepo")
+```
+
+With the site library hidden, `cli` and `rlang` are resolved from the
+repository and installed before `xml2`, as with any other repository.
+
+## Serving the repository
+
+| How | When |
+|---|---|
+| `file:///opt/pkgrepo` | One server, or a shared NFS mount |
+| Any static web server | Several machines |
+| Posit Package Manager | You also want binaries and dated snapshots |
+
+```nginx
+server {
+  listen 80;
+  server_name pkgs.example.com;
+  root /opt/pkgrepo;
+  autoindex on;
+}
+```
+
+Then in `Rprofile.site`:
+
+```r
+options(repos = c(INTERNAL = "http://pkgs.example.com"))
+```
+
+## `write_PACKAGES()` arguments
+
+```r
+tools::write_PACKAGES(
+  dir            = "/opt/pkgrepo/src/contrib",
+  type           = "source",      # or a binary type, e.g. "win.binary"
+  latestOnly     = TRUE,          # index only the newest of each package
+  addFiles       = FALSE,
+  verbose        = TRUE,
+  fields         = NULL           # extra fields, e.g. "SystemRequirements"
+)
+```
+
+::: {.note}
+[`latestOnly`]{.note-label}
+`TRUE` is the default: one version per package, as on CRAN. `FALSE` also
+indexes older versions
+([`?write_PACKAGES`](https://stat.ethz.ch/R-manual/R-devel/library/tools/html/writePACKAGES.html)).
+:::
+
+Re-run `write_PACKAGES()` after every change to the directory. A tarball
+that is not in `PACKAGES` is not visible to R.

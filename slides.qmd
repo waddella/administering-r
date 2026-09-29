@@ -1,0 +1,34 @@
+---
+title: "Administering R: installations, libraries, and package management"
+subtitle: "A workshop for system administrators and platform engineers"
+author: "Adrian Waddell"
+institute: "Posit, PBC"
+date: 2026-09-29
+date-format: long
+---
+
+{{< include sections/00-welcome.qmd >}}
+
+{{< include sections/01-installation.qmd >}}
+
+{{< include sections/02-anatomy.qmd >}}
+
+{{< include sections/03-startup.qmd >}}
+
+{{< include sections/04-libraries.qmd >}}
+
+{{< include sections/05-repositories.qmd >}}
+
+{{< include sections/06-bioconductor.qmd >}}
+
+{{< include sections/07-dependencies.qmd >}}
+
+{{< include sections/08-sysreqs.qmd >}}
+
+{{< include sections/09-source-packages.qmd >}}
+
+{{< include sections/10-check.qmd >}}
+
+{{< include sections/11-local-repository.qmd >}}
+
+{{< include sections/99-closing.qmd >}}

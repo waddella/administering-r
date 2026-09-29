@@ -1,0 +1,202 @@
+---
+format: revealjs
+---
+
+# Installing R{.dark-slide background-color="#111C26"}
+
+[BLOCK 1 &middot; PART A]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+## Four ways to get R
+
+| Route | Good for | The catch |
+|---|---|---|
+| Distro packages (`apt`, `yum`) | One R, kept current by the OS | One version at a time; version follows the distro |
+| Posit's [r-builds](https://github.com/rstudio/r-builds) / [rig](https://github.com/r-lib/rig) | Several versions side by side under `/opt/R/<version>` | You own the upgrade cadence |
+| Build from source | Full control of flags, BLAS, `--prefix` | You own the build, the toolchain, and the reproducing of it |
+| Container images (`rocker/*`) | Reproducible, disposable | Persisting user libraries needs thought, calling other programs from R via `system2()` requires programs being installed in the docker image |
+
+## The one rule that saves you later
+
+::: {.note}
+[Rule]{.note-label}
+
+- Never install a new R version into the same directory as an existing one,
+  where it overwrites the old version's files in place.
+- Never point two R versions at the same package library.
+:::
+
+Packages are compiled against a specific R. We come back to libraries in
+block 2.
+
+## Building from source
+
+```bash
+curl -LO https://cran.r-project.org/src/base/R-4/R-4.6.1.tar.gz
+tar xf R-4.6.1.tar.gz
+cd R-4.6.1
+
+./configure --help
+./configure --prefix=/opt/R/4.6.1 \
+            --enable-R-shlib \
+            --enable-memory-profiling
+
+make -j"$(nproc)"
+make check          # optional, and slow, and worth it once
+make install
+```
+
+Important flags:
+
+- `--prefix` is what makes versioned side-by-side installs work.
+- `--enable-R-shlib` builds `libR.so`
+  ([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Configuration-options)).
+  Without it, RStudio Server, Workbench, and anything else that embeds R
+  (such as Python's `rpy2`) will not work
+  ([Posit docs](https://docs.posit.co/resources/install-r-source.html)).
+
+## Optimization flags
+
+`configure` accepts the usual compiler variables, and R records them so every
+package you compile later inherits them.
+
+```bash
+./configure --prefix=/opt/R/4.6.1 --enable-R-shlib \
+  CFLAGS="-O2 -g" \
+  CXXFLAGS="-O2 -g"
+```
+
+::: {.note}
+[Avoid]{.note-label}
+`-march=native` lets the compiler use every instruction the build machine's
+CPU supports, so the result might not run on other machines
+([GCC](https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html#index-march-13)).
+Build in a container on a newer host, run on an older node, and packages die
+with `Illegal instruction`. If you need a target, name one, such as
+`-march=x86-64-v2`.
+:::
+
+`-O2` is what `configure` picks by default for GCC
+([Autoconf](https://www.gnu.org/software/autoconf/manual/autoconf-2.72/html_node/C-Compiler.html)).
+`-ffast-math` gives up IEEE guarantees that R's `NA`, `NaN` and `Inf` handling
+relies on ([GCC](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-ffast-math)).
+
+## Where those flags end up
+
+`configure` bakes them into `Makeconf`, which every later `R CMD INSTALL`
+reads. This is the file to check when a user's compile behaves oddly.
+
+```bash
+R CMD config CC
+R CMD config CFLAGS
+R CMD config --all | head -30
+
+# the file itself
+grep -E '^(CFLAGS|CXXFLAGS|FFLAGS) ' "$(R RHOME)/etc/Makeconf"
+cat "$(R RHOME)/etc/Makeconf"
+```
+
+A site can override any of it per-installation in
+`$(R RHOME)/etc/Makevars.site`, and a user can override that in
+`~/.R/Makevars`
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Customizing-package-compilation-1)).
+Both are worth knowing about, because both are places a
+"works for me, not for them" difference hides.
+
+## BLAS and LAPACK
+
+Many models rely on linear algebra. R ships a
+reference BLAS and can instead link to a tuned one ([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#BLAS-1)).
+
+| Option | Notes |
+|---|---|
+| Reference BLAS (default) | Used unless an external BLAS is requested at configure time |
+| OpenBLAS | Serial, threaded and OpenMP builds packaged by Fedora and Debian; picks CPU-specific code at run time ([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#OpenBLAS-and-BLIS)) |
+| Intel MKL | For Intel processors; ships its own tuned LAPACK; Intel's link line advisor is recommended |
+| Apple Accelerate | macOS; differs from the reference BLAS on `NA` vs `NaN`, and many packages fail their checks with it |
+
+```bash
+./configure --prefix=/opt/R/4.6.1 --enable-R-shlib \
+            --with-blas="-lopenblas" --with-lapack
+```
+
+## BLAS: the two catches {.skip}
+
+**Threading.** Threaded builds of OpenBLAS take their thread count from
+`OPENBLAS_NUM_THREADS` or `OMP_NUM_THREADS`
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#OpenBLAS-and-BLIS)). A multi-threaded BLAS can take more CPU
+time and even more elapsed time than a single-threaded one, and other work
+on the machine competes with it
+([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#Linear-algebra-1)). Nest it inside `parallel::mclapply()` and
+the competition is with itself. Pin it site-wide in `Renviron.site`:
+
+```bash
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+```
+
+**Reproducibility.** BLAS implementations that compute in parallel can be
+non-deterministic ([R-admin](https://cran.r-project.org/doc/manuals/r-release/R-admin.html#BLAS)): results can differ between runs on
+the same machine. For most work this is irrelevant; for a regulatory
+submission it is a finding.
+
+::: {.note}
+[Check what you actually have]{.note-label}
+`sessionInfo()` reports the BLAS and LAPACK in use, and
+`extSoftVersion()[["BLAS"]]` gives the path
+([`?sessionInfo`](https://stat.ethz.ch/R-manual/R-devel/library/utils/html/sessionInfo.html)). Run these on any server you
+inherit. Installations surprise people.
+:::
+
+```r
+extSoftVersion()[["BLAS"]]
+```
+
+```text
+[1] "/usr/lib/x86_64-linux-gnu/openblas-pthread/libblas.so.3"
+```
+
+Our lab container is already on OpenBLAS: the `rocker/r-base` Dockerfile
+installs `libopenblas0-pthread`
+([Dockerfile](https://github.com/rocker-org/rocker/blob/master/r-base/latest/Dockerfile)).
+
+## Capabilities: what the build can do
+
+A build's features depend on what was present at `configure` time.
+
+```r
+capabilities()
+```
+
+```text
+       jpeg         png        tiff       tcltk         X11        aqua
+       TRUE        TRUE        TRUE        TRUE       FALSE       FALSE
+   http/ftp     sockets      libxml        fifo      cledit       iconv
+       TRUE        TRUE       FALSE        TRUE        TRUE        TRUE
+        NLS       Rprof     profmem       cairo         ICU long.double
+       TRUE        TRUE        TRUE        TRUE        TRUE        TRUE
+    libcurl
+       TRUE
+```
+
+See `?capabilities` for more information.
+
+## Our lab installation
+
+We are not going to build R from source in the workshop as that would take too long given the available time.
+
+```bash
+docker run --rm -it --name rlab rocker/r-base bash
+```
+
+`rocker/r-base` is Debian (currently `forky/sid`) with R from the Debian
+packages. That makes it a realistic stand-in for a distro-installed R, which
+is what most of you have.
+
+::: {.note}
+[If you are on Apple silicon]{.note-label}
+The image is `linux/amd64` only, so Docker runs it emulated and you will see
+a platform warning. Everything works; compiles are much slower.
+:::

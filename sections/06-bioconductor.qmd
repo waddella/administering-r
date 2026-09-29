@@ -1,0 +1,218 @@
+---
+format: revealjs
+---
+
+# Bioconductor {.dark-slide background-color="#111C26"}
+
+[BLOCK 3 &middot; PART B]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[Same repository format, released as versioned sets tied to R.]{.subhead}
+
+## What Bioconductor is
+
+A repository for genomic and high-throughput biological data analysis.
+Bioconductor 3.23 has 2,418 software packages, plus annotation, experiment
+data, workflow and book repositories
+([release announcements](https://bioconductor.org/about/release-announcements/)).
+
+It differs from CRAN in three ways:
+
+- **Released as a set.** Twice a year.
+- **Versioned.** Each release has its own repository URL, e.g.
+  `bioconductor.org/packages/3.23/bioc`. CRAN has one repository that
+  changes daily.
+- **Tied to R.** Each Bioconductor release requires one R minor version.
+
+## Each release requires one R version
+
+```bash
+curl -s https://bioconductor.org/config.yaml | grep -A1 'release_version'
+```
+
+```text
+release_version: "3.23"
+r_version_associated_with_release: "4.6.0"
+```
+
+The full mapping is `r_ver_for_bioc_ver` in the same
+[config.yaml](https://bioconductor.org/config.yaml).
+
+::: {.note}
+[Planning]{.note-label}
+The Bioconductor version your analyses need determines the R version you
+install.
+:::
+
+## Two releases a year
+
+| Release | Date | R |
+|---|---|---|
+| 3.23 | April 2026 | 4.6 |
+| 3.22 | October 2025 | 4.5 |
+| 3.21 | April 2025 | 4.5 |
+| 3.20 | October 2024 | 4.4 |
+
+Shortly before a new release, the previous one stops being built and its
+branch is closed to commits
+([release schedule](https://bioconductor.org/developers/release-schedule/)).
+The old release stays downloadable; it just no longer changes.
+
+## `BiocManager` picks the version
+
+```r
+install.packages("BiocManager")
+BiocManager::version()
+```
+
+```text
+[1] '3.23'
+```
+
+`BiocManager` derives the Bioconductor version from your R version. You do
+not need to tell it
+([`?BiocManager::version`](https://bioconductor.github.io/BiocManager/reference/version.html)).
+
+## `BiocManager::repositories()`
+
+::: {.demo-label}
+Live
+:::
+
+```r
+BiocManager::repositories()
+```
+
+```text
+'getOption("repos")' replaces Bioconductor standard repositories, see
+'help("repositories", package = "BiocManager")' for details.
+Replacement repositories:
+    CRAN: https://cloud.r-project.org
+                                                BioCsoft 
+           "https://bioconductor.org/packages/3.23/bioc" 
+                                                 BioCann 
+"https://bioconductor.org/packages/3.23/data/annotation" 
+                                                 BioCexp 
+"https://bioconductor.org/packages/3.23/data/experiment" 
+                                           BioCworkflows 
+      "https://bioconductor.org/packages/3.23/workflows" 
+                                               BioCbooks 
+          "https://bioconductor.org/packages/3.23/books" 
+                                                    CRAN 
+                           "https://cloud.r-project.org" 
+```
+
+Five Bioconductor repositories **and CRAN**, because Bioconductor packages
+depend on CRAN packages. The version number is in every URL.
+
+## Bioconductor via `install.packages()`
+
+Set the same vector yourself and `install.packages()` installs Bioconductor
+packages:
+
+```r
+options(repos = BiocManager::repositories())
+install.packages("BiocGenerics")
+```
+
+`BiocManager` takes CRAN from `getOption("repos")`, so a CRAN snapshot you
+set there is used. It warns that `getOption("repos")` replaces its default
+([`?BiocManager::repositories`](https://bioconductor.github.io/BiocManager/reference/repositories.html)).
+
+::: {.note}
+[Air-gapped sites]{.note-label}
+An internal repository needs copies of the packages you use from each of
+these URLs. We build one in block 6.
+:::
+
+## `BiocManager::install()` vs `install.packages()`
+
+| | `install.packages()` | `BiocManager::install()` |
+|---|---|---|
+| Repositories | `getOption("repos")` | Bioconductor set for your R, plus CRAN |
+| Checks R and Bioconductor match | No | Yes |
+| Updates other packages | **No** | **Yes**, `update = TRUE` by default |
+| Asks before updating | – | `ask = TRUE` by default |
+
+```r
+BiocManager::install("SummarizedExperiment")
+```
+
+That call installs one package **and offers to update every out-of-date
+package in your library**, from Bioconductor and CRAN
+([`?BiocManager::install`](https://bioconductor.github.io/BiocManager/reference/install.html)).
+
+
+## `BiocManager::valid()`
+
+```r
+BiocManager::valid()
+```
+
+```text
+'getOption("repos")' replaces Bioconductor standard repositories, see
+'help("repositories", package = "BiocManager")' for details.
+Replacement repositories:
+    BioCsoft: https://bioconductor.org/packages/3.23/bioc
+    BioCann: https://bioconductor.org/packages/3.23/data/annotation
+    BioCexp: https://bioconductor.org/packages/3.23/data/experiment
+    BioCworkflows: https://bioconductor.org/packages/3.23/workflows
+    BioCbooks: https://bioconductor.org/packages/3.23/books
+    CRAN: https://cloud.r-project.org
+[1] TRUE
+```
+
+Checks that installed packages are neither out of date nor too new for your
+R and Bioconductor versions
+([`?BiocManager::valid`](https://bioconductor.github.io/BiocManager/reference/valid.html)).
+Run it after changing a Bioconductor site library.
+
+## Version mismatch
+
+::: {.demo-label}
+Live
+:::
+
+Exit the container and start one with an older R:
+
+```bash
+exit
+docker run --rm -it rocker/r-ver:4.4.1 R -q
+```
+
+```r
+install.packages("BiocManager")
+BiocManager::version()
+```
+
+```text
+[1] '3.20'
+```
+
+Same `BiocManager`, different answer. Now ask for a version that does not
+match:
+
+```r
+BiocManager::install(version = "3.23")
+```
+
+```text
+Error: Bioconductor version '3.23' requires R version '4.6'; use `version = '3.20'`
+  with R version 4.4; see https://bioconductor.org/install
+```
+
+The error names the Bioconductor version this R can use.
+
+::: {.note}
+[Rule]{.note-label}
+One Bioconductor version per library. Two Bioconductor versions need two
+libraries. They share an R installation only if they use the same R minor
+version, as the April and October releases of a year do (3.21 and 3.22 both
+use R 4.5).
+:::
+
+```bash
+exit      # back out; we start fresh in the next block
+```

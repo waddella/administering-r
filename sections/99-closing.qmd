@@ -1,0 +1,125 @@
+---
+format: revealjs
+---
+
+# Putting it together {.dark-slide background-color="#111C26"}
+
+[CLOSING]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+[What to check and configure on a server you inherit.]{.subhead}
+
+## The model
+
+```text
+              +-------------------------------------------+
+  REPOSITORY  |  PACKAGES  +  *.tar.gz                    |
+              |  CRAN / Bioconductor / snapshot / yours   |
+              +----------------------+--------------------+
+                                     |  install.packages(repos =, lib =)
+                                     v
+              +-------------------------------------------+
+  LIBRARY     |  .libPaths() = user : site : .Library     |
+              |  one per R minor version                  |
+              +----------------------+--------------------+
+                                     |  library()
+                                     v
+              +-------------------------------------------+
+  SESSION     |  $(R RHOME)/etc/Renviron    (build)       |
+              |  Renviron.site  ->  .Renviron  (env)      |
+              |  Rprofile.site  ->  .Rprofile  (code)     |
+              +-------------------------------------------+
+
+  and underneath all of it:  OS packages the compiler needs
+```
+
+## A starting configuration
+
+```bash
+# /etc/R/Renviron.site
+TMPDIR=${TMPDIR-'/var/tmp/R'}
+R_PKG_REPO=${R_PKG_REPO-'https://packagemanager.posit.co/cran/__linux__/noble/2026-06-01'}
+```
+
+```r
+# /etc/R/Rprofile.site
+.Library.site <- "/opt/rlibs/4.6"
+
+local({
+  options(
+    repos   = c(CRAN = Sys.getenv("R_PKG_REPO")),
+    Ncpus   = max(1L, parallel::detectCores() - 1L),
+    timeout = 300,
+    warn    = 1
+  )
+})
+```
+
+| Setting | Covered in |
+|---|---|
+| `TMPDIR` | Maintenance: a `noexec` `/tmp` breaks `configure` |
+| `R_PKG_REPO`, `repos` | Startup files; Repositories: dated snapshots |
+| `.Library.site` | Maintenance: set up a site library |
+| `Ncpus`, `timeout`, `warn` | Startup files: what belongs in `Rprofile.site` |
+
+## A checklist for a server you inherit
+
+```text
+[ ] R --version, and which -a R Rscript        -- how many are there?
+[ ] R RHOME; ls $(R RHOME)/etc                 -- real files or symlinks?
+[ ] cat $(R RHOME)/etc/Renviron.site           -- what did your predecessor do?
+[ ] cat $(R RHOME)/etc/Rprofile.site
+[ ] R -q -e '.libPaths()'                      -- and again with --vanilla
+[ ] R -q -e 'getOption("repos")'               -- "@CRAN@" means unconfigured
+[ ] R -q -e 'sessionInfo()'                    -- which BLAS?
+[ ] R -q -e 'capabilities()'                   -- cairo? libcurl? libxml?
+[ ] ls -ld the site library                    -- who can write to it?
+[ ] nrow(installed.packages())                 -- and how many are stale?
+[ ] BiocManager::valid()                       -- if Bioconductor is in use
+[ ] mount | grep -E '/tmp|/var/tmp'            -- noexec?
+```
+
+## Three habits
+
+1. **Bisect with flags.** `--vanilla`, then `--no-init-file`, then
+   `.libPaths("")`, before reading configuration files.
+2. **Read the first lines of the output.** `Installing package into '...'
+   (as 'lib' is unspecified)` says which library was used; `ERROR: ... for
+   package 'x'` says which package failed.
+3. **Own your tarballs.** A local repository built from a dated snapshot,
+   in version control, checked as a cohort.
+
+## Discussion
+
+- How do you handle an R version upgrade, and how long does it take?
+- Who is allowed to install into the site library, and how do you know what
+  they did?
+- What is your answer when someone needs a package that is not in your
+  repository?
+- How do you demonstrate to a reviewer that an environment is what you say
+  it is?
+- Air-gapped networks: what is actually working for you?
+
+## Where to go next
+
+| Topic | Start here |
+|---|---|
+| The manual, end to end | [R Installation and Administration](https://cran.r-project.org/doc/manuals/r-release/R-admin.html) |
+| Dependency fields, `check` details | [Writing R Extensions](https://cran.r-project.org/doc/manuals/r-release/R-exts.html) |
+| Per-project libraries | [`renv`](https://rstudio.github.io/renv/) |
+| Fast, solved installs | [`pak`](https://pak.r-lib.org/) |
+| The sysreqs rules | [rstudio/r-system-requirements](https://github.com/rstudio/r-system-requirements) |
+| Versioned R builds | [rstudio/r-builds](https://github.com/rstudio/r-builds), [rig](https://github.com/r-lib/rig) |
+| Repositories, binaries, snapshots | [Posit Package Manager](https://packagemanager.posit.co/) |
+| Containers | [The Rocker Project](https://rocker-project.org/) |
+
+## Thank you {.dark-slide background-color="#111C26"}
+
+[QUESTIONS]{.eyebrow}
+
+::: {.accent-bar}
+:::
+
+Adrian Waddell &middot; Posit, PBC

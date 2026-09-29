@@ -1,0 +1,21 @@
+# Quarto render output and cache
+/_output/
+/.quarto/
+*_files/
+
+# Claude Code: personal settings and internal state
+.claude/settings.local.json
+.claude/.cc-writes/
+sections/.claude/
+
+# OS and editor clutter
+.DS_Store
+*.swp
+*~
+
+# R session files, e.g. from trying demos locally
+.Rhistory
+.RData
+.Rproj.user/
+
+**/*.quarto_ipynb
